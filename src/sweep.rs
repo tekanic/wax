@@ -16,6 +16,8 @@ pub const READING: &str = "Reading";
 pub const RECORDS: &str = "Records";
 pub const SCREENED: &str = "Screened Out";
 pub const KEEP: &str = "keep";
+/// Where the Screener holds a first email from someone new.
+pub const LOBBY: &str = "Lobby";
 const INBOX: &str = mail::INBOX;
 
 /// Label everything from `email` with `dest` and take it out of the Inbox.
@@ -38,6 +40,34 @@ pub fn apply_sender(session: &SharedSession, store: &SharedStore, acct: &str, em
     }
     store.lock().unwrap().remove_inbox_from(acct, email)?;
     Ok(all.len().max(inbox.len()))
+}
+
+/// Screener: move a new sender's Inbox mail to the Lobby to wait for a
+/// decision. No rule is written; deciding writes one.
+pub fn hold_in_lobby(session: &SharedSession, store: &SharedStore, acct: &str, email: &str) -> anyhow::Result<usize> {
+    session.lock().unwrap().ensure_mailbox(LOBBY)?;
+    let ids = session.lock().unwrap().uids_from(INBOX, email)?;
+    session.lock().unwrap().copy_ids(INBOX, LOBBY, &ids)?;
+    session.lock().unwrap().move_ids(INBOX, ALL_MAIL, &ids)?;
+    store.lock().unwrap().remove_inbox_from(acct, email)?;
+    Ok(ids.len())
+}
+
+/// A decision about a sender empties their Lobby: back to the Inbox for
+/// "keep", else into `dest`. Nothing to do when there's no Lobby.
+pub fn release_lobby(session: &SharedSession, email: &str, dest: &str) -> anyhow::Result<usize> {
+    let Ok(ids) = session.lock().unwrap().uids_from(LOBBY, email) else { return Ok(0) };
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    if dest == KEEP {
+        session.lock().unwrap().move_ids(LOBBY, INBOX, &ids)?;
+    } else {
+        session.lock().unwrap().ensure_mailbox(dest)?;
+        session.lock().unwrap().copy_ids(LOBBY, dest, &ids)?;
+        session.lock().unwrap().move_ids(LOBBY, ALL_MAIL, &ids)?;
+    }
+    Ok(ids.len())
 }
 
 /// Undo a block: the sender's Screened Out mail goes back to the Inbox.
@@ -266,13 +296,18 @@ impl MailApp {
                     } else {
                         apply_sender(&session, &store, &acct, &email, &dest)?
                     };
-                    anyhow::Ok(n)
+                    let lobby = release_lobby(&session, &email, &dest)?;
+                    anyhow::Ok(n + lobby)
                 })
                 .await;
             this.update(cx, |this, cx| {
                 match result {
                     Ok(n) if unscreen => {
                         this.status = format!("{} allowed: {n} messages back in the Inbox", display_name(&p.name, &p.email)).into();
+                        this.refresh_folders(cx);
+                    }
+                    Ok(n) if p.dest == KEEP && n > 0 => {
+                        this.status = format!("{} let in: {n} message{} in the Inbox", display_name(&p.name, &p.email), if n == 1 { "" } else { "s" }).into();
                         this.refresh_folders(cx);
                     }
                     Ok(_) if p.dest == KEEP => this.status = format!("{} stays in the Inbox", display_name(&p.name, &p.email)).into(),

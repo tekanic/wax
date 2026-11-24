@@ -223,39 +223,6 @@ impl MailApp {
             load(account).and_then(|(r, _)| r.get(email).cloned())
         }
     }
-
-    /// New mail for an account that isn't on screen: file what its rules
-    /// say (on a connection of its own) and return the rest.
-    pub fn apply_rules_elsewhere(&mut self, account: &str, list: Vec<Envelope>, cx: &mut Context<Self>) -> Vec<Envelope> {
-        let Some((rules, _)) = load(account) else { return list };
-        let mut to_file: BTreeMap<String, String> = BTreeMap::new();
-        let kept: Vec<Envelope> = list
-            .into_iter()
-            .filter(|e| {
-                let email = e.from_email.to_lowercase();
-                match rules.get(&email) {
-                    Some(dest) if dest != sweep::KEEP && e.mailbox.eq_ignore_ascii_case(mail::INBOX) => {
-                        to_file.insert(email, dest.clone());
-                        false
-                    }
-                    _ => true,
-                }
-            })
-            .collect();
-        if let (false, Some(store)) = (to_file.is_empty(), self.store.clone()) {
-            let account = account.to_string();
-            cx.background_executor()
-                .spawn(async move {
-                    let Ok(session) = Session::connect(&account) else { return };
-                    let session: SharedSession = Arc::new(Mutex::new(session));
-                    for (email, dest) in to_file {
-                        sweep::apply_sender(&session, &store, &account, &email, &dest).ok();
-                    }
-                })
-                .detach();
-        }
-        kept
-    }
 }
 
 #[cfg(test)]

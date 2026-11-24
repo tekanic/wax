@@ -610,6 +610,30 @@ impl Store {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// The Screener's question: is there other mail from this sender (outside
+    /// the Lobby, Spam and Trash), or have you written to them?
+    pub fn sender_known(&self, account: &str, email: &str, mailbox: &str, id: &str, message_id: Option<&str>) -> bool {
+        let wrote: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM sent_contacts WHERE account = ?1 AND email = ?2", params![account, email], |r| r.get(0))
+            .unwrap_or(0);
+        if wrote > 0 {
+            return true;
+        }
+        let seen: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM envelopes WHERE account = ?1 AND lower(from_email) = ?2
+                   AND mailbox NOT IN ('Lobby', '[Gmail]/Spam', '[Gmail]/Trash')
+                   AND NOT (mailbox = ?3 AND id = ?4)
+                   AND (?5 IS NULL OR message_id IS NULL OR message_id != ?5)",
+                params![account, email, mailbox, id, message_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        seen > 0
+    }
+
     /// Forget cached Inbox copies from a sender (after filing them).
     pub fn remove_inbox_from(&self, account: &str, email: &str) -> Result<()> {
         self.conn.execute(

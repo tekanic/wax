@@ -103,6 +103,21 @@ integrations) will ship as sandboxed WebAssembly plugins.
       all of a sender's mail, past and future: `r` Reading, `c` Records, `x` Screened
       Out (Gmail labels; mail leaves the Inbox), `i` keep. 8 s undo window (`⌘Z`).
       Rules file new Inbox mail from those senders on every refresh.
+- [x] Screener (per account, Settings → General): a first email from someone new
+      waits in the **Lobby** label instead of the Inbox. In the Lobby, `e` lets the
+      sender in (their mail goes to the Inbox and they stay there from now on) and
+      `b` screens them out; ⇧R / ⇧C file them in Reading or Records. Known senders
+      come straight through: anyone you've written to, anyone you've had other mail
+      from, colleagues on your work domain and your own addresses. Only mail that
+      arrives after you switch it on is screened.
+
+### Plugins
+
+New mail goes through one path (`src/plugins.rs`): the core works out the facts
+(the sender's rule, whether you know them), asks each built-in plugin in turn,
+and carries out what the first one answers. Sender rules and the Screener are the
+first two; they're written to the same shape the sandboxed WebAssembly plugins
+will get, so they can move out of the core later.
 
 ## Your files
 

@@ -17,11 +17,14 @@ pub struct Settings {
     pub sig_new: Option<i64>,
     /// Signature for replies.
     pub sig_reply: Option<i64>,
+    /// When the Screener was last switched on for an account (Unix
+    /// seconds); mail from before then is never held.
+    pub screener_since: i64,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { mono: true, hide_list_when_writing: true, blocks_open: false, sig_new: None, sig_reply: None }
+        Settings { mono: true, hide_list_when_writing: true, blocks_open: false, sig_new: None, sig_reply: None, screener_since: 0 }
     }
 }
 
@@ -42,6 +45,7 @@ impl Settings {
             blocks_open: d.blocks_open,
             sig_new: id("signature.new"),
             sig_reply: id("signature.reply"),
+            screener_since: 0,
         }
     }
 
@@ -217,6 +221,25 @@ impl MailApp {
             self.status = format!("Could not save settings: {e:#}").into();
             self.status_is_error = true;
         }
+        cx.notify();
+    }
+
+    fn toggle_screener(&mut self, email: &str, cx: &mut Context<Self>) {
+        let Some(a) = self.accounts.iter_mut().find(|a| a.email == email) else { return };
+        a.screener = !a.screener;
+        let (on, account) = (a.screener, a.clone());
+        if let Err(e) = crate::accounts::save(&account) {
+            self.status = format!("Could not save {email}: {e:#}").into();
+            self.status_is_error = true;
+            return cx.notify();
+        }
+        if on {
+            // Only mail that arrives from now on is screened.
+            self.settings.screener_since = chrono::Utc::now().timestamp();
+            self.save_settings(cx);
+        }
+        self.status = if on { format!("Screener on for {email}") } else { format!("Screener off for {email}") }.into();
+        self.status_is_error = false;
         cx.notify();
     }
 
@@ -699,6 +722,14 @@ impl MailApp {
             .child(choice("open-keymap", "Edit shortcuts", false).on_click(cx.listener(|_, _, _, _| {
                 std::process::Command::new("open").arg("-t").arg(crate::keys::keymap_file()).spawn().ok();
             })));
+        let mut screen = div().flex().flex_wrap().justify_end().gap_1p5();
+        for a in &self.accounts {
+            let email = a.email.clone();
+            screen = screen.child(
+                choice(SharedString::from(format!("screener-{}", a.email)), a.email.clone(), a.screener)
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_screener(&email, cx))),
+            );
+        }
         let at_login = crate::login::enabled();
         let login = div()
             .flex()
@@ -718,6 +749,11 @@ impl MailApp {
                     .flex_col()
                     .child(setting_row("Font", "Used while writing and in the message you send. Each message can switch.", font))
                     .child(setting_row("Message list while writing", "Hiding it gives the message more room.", hide))
+                    .child(setting_row(
+                        "Screener",
+                        "Pick the accounts where a first email from someone new waits in the Lobby: e lets them in, b screens them out. People you've written to, colleagues and anyone you've had mail from come straight through.",
+                        screen,
+                    ))
                     .child(setting_row("Open at login", "Starts Wax when you sign in to your Mac.", login))
                     .child(setting_row(
                         "Settings files",

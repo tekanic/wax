@@ -20,6 +20,8 @@ pub enum Folder {
     Spam,
     Trash,
     Screened,
+    /// The Screener's holding label.
+    Lobby,
     /// Labels, Reading, Records, search results.
     Other,
 }
@@ -107,6 +109,8 @@ impl MailApp {
             Folder::Trash
         } else if is(sweep::SCREENED) {
             Folder::Screened
+        } else if is(sweep::LOBBY) {
+            Folder::Lobby
         } else {
             Folder::Other
         }
@@ -118,6 +122,7 @@ impl MailApp {
             Folder::Trash => Some((MsgAction::ToInbox, "restore")),
             Folder::Spam => Some((MsgAction::ToInbox, "not spam")),
             Folder::Screened => Some((MsgAction::ToInbox, "move to Inbox")),
+            Folder::Lobby => Some((MsgAction::AllowSender, "let in")),
             Folder::AllMail | Folder::Sent | Folder::Drafts => None,
             _ => Some((MsgAction::Archive, "archive")),
         }
@@ -127,6 +132,7 @@ impl MailApp {
     pub fn b_action(&self) -> Option<(MsgAction, &'static str)> {
         match self.folder() {
             Folder::Screened => Some((MsgAction::AllowSender, "allow sender")),
+            Folder::Lobby => Some((MsgAction::BlockSender, "screen out")),
             Folder::Sent | Folder::Drafts => None,
             _ => Some((MsgAction::BlockSender, "block sender")),
         }
@@ -344,7 +350,7 @@ impl MailApp {
             .unwrap_or(0);
         // Their mail leaves this view right away where the decision moves it.
         let f = self.folder();
-        let hide = match dest {
+        let hide = f == Folder::Lobby || match dest {
             sweep::KEEP => f == Folder::Screened,
             sweep::SCREENED => matches!(f, Folder::Inbox | Folder::Important),
             _ => f == Folder::Inbox,
@@ -419,6 +425,7 @@ impl MailApp {
                 match f {
                     Folder::Trash => "Restore to Inbox",
                     Folder::Spam => "Not spam",
+                    Folder::Lobby => "Let them in",
                     _ => "Move to Inbox",
                 },
                 "e",

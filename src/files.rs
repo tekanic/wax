@@ -144,6 +144,7 @@ pub fn load_settings() -> Option<crate::settings::Settings> {
         blocks_open: flag("blocks_open", d.blocks_open),
         sig_new: id("signature_for_new"),
         sig_reply: id("signature_for_replies"),
+        screener_since: m.get("screener_since").and_then(|v| v.parse().ok()).unwrap_or(0),
     })
 }
 
@@ -157,12 +158,17 @@ pub fn save_settings(s: &crate::settings::Settings) -> Result<()> {
          blocks_open = {}\n\
          # Signature ids (see signatures/*/signature.toml); 0 = none.\n\
          signature_for_new = {}\n\
-         signature_for_replies = {}\n",
+         signature_for_replies = {}\n\
+         \n\
+         # Screener (switched on per account): mail from before this time\n\
+         # (Unix seconds) is never held.\n\
+         screener_since = {}\n",
         s.mono,
         s.hide_list_when_writing,
         s.blocks_open,
         id(s.sig_new),
-        id(s.sig_reply)
+        id(s.sig_reply),
+        s.screener_since
     );
     write_atomic(&settings_file(), text.as_bytes())
 }

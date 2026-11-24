@@ -28,6 +28,7 @@ mod mail;
 mod md;
 mod model;
 mod oauth;
+mod plugins;
 mod problems;
 mod rules;
 mod store;
@@ -92,6 +93,7 @@ fn folder_icon(name: &str, system: bool) -> (&'static str, Option<u32>) {
         sweep::READING => ("icons/book-open.svg", Some(0x4f8ff7)),
         sweep::RECORDS => ("icons/receipt.svg", Some(0xc9a227)),
         sweep::SCREENED => ("icons/ban.svg", Some(0xd06a6a)),
+        sweep::LOBBY => ("icons/user-plus.svg", Some(0x5fb58a)),
         "[Gmail]/Starred" => ("icons/star.svg", None),
         "[Gmail]/Important" => ("icons/flag.svg", None),
         "[Gmail]/Sent Mail" => ("icons/send.svg", None),
@@ -138,6 +140,7 @@ fn log_timing(what: &str, started: std::time::Instant) {
 /// Gmail system folders, in the order a mail client shows them.
 const SYSTEM_ORDER: &[(&str, &str)] = &[
     ("INBOX", "Inbox"),
+    ("Lobby", "Lobby"),
     ("Reading", "Reading"),
     ("Records", "Records"),
     ("[Gmail]/Starred", "Starred"),
@@ -2512,7 +2515,7 @@ impl MailApp {
             let n = m.name.as_ref();
             if !m.system {
                 3
-            } else if n.eq_ignore_ascii_case("INBOX") || n == sweep::READING || n == sweep::RECORDS {
+            } else if n.eq_ignore_ascii_case("INBOX") || n == sweep::LOBBY || n == sweep::READING || n == sweep::RECORDS {
                 0
             } else if n == sweep::SCREENED || n == "[Gmail]/Spam" || n == "[Gmail]/Trash" {
                 2

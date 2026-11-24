@@ -168,7 +168,7 @@ impl MailApp {
             store_upsert(&store.lock().unwrap(), account, &list).ok();
         }
         let active = *self.account == *account;
-        let kept = if active { self.apply_rules_to_inbox(list, cx) } else { self.apply_rules_elsewhere(account, list, cx) };
+        let kept = self.dispatch_arrivals(account, list, cx);
         let in_inbox = self.query.is_empty()
             && (self.unified || (active && self.active().is_some_and(|m| m.name.eq_ignore_ascii_case(mail::INBOX))));
         if in_inbox {
