@@ -1,0 +1,155 @@
+// gpui-mail plugin interface — DRAFT v0 (not implemented yet).
+//
+// Design rules:
+// - Plugins are WebAssembly components run by wasmtime, one instance each.
+// - Plugins never mutate mail directly. They return `action`s; the core
+//   checks each one against the permissions the user granted, then applies it.
+// - Plugins never draw GPUI views. They return a small declarative `ui-node`
+//   tree that the core renders with its own components.
+// - Everything a plugin may read arrives as arguments or through `host`,
+//   which is permission-checked too.
+
+package gpui-mail:plugin@0.1.0;
+
+interface types {
+    record address {
+        name: option<string>,
+        email: string,
+    }
+
+    record envelope {
+        account: string,
+        mailbox: string,
+        id: string,
+        message-id: option<string>,
+        %from: list<address>,
+        to: list<address>,
+        subject: string,
+        // RFC 3339, UTC.
+        date: option<string>,
+        %flags: list<string>,
+        labels: list<string>,
+    }
+
+    /// What a plugin asks the core to do. Applied only if permitted.
+    variant action {
+        add-label(string),
+        remove-label(string),
+        move-to(string),
+        mark-read(bool),
+        star(bool),
+        archive,
+        /// Hide until the given RFC 3339 time, then return to the inbox.
+        snooze-until(string),
+        /// Show a transient message in the status bar.
+        notify(string),
+        /// Open the composer with a prefilled draft.
+        open-draft(draft),
+    }
+
+    record draft {
+        to: list<address>,
+        subject: string,
+        body-markdown: string,
+        in-reply-to: option<string>,
+    }
+
+    /// A palette command or a button beside an open message.
+    record command {
+        id: string,
+        title: string,
+        /// Zed-style keystroke, e.g. "cmd-shift-s". Optional.
+        keybinding: option<string>,
+        /// Show as a button in the reader when a message is open.
+        in-message-toolbar: bool,
+    }
+
+    /// Declarative UI for sidebar panels. Rendered by the core.
+    variant ui-node {
+        text(string),
+        heading(string),
+        badge(string),
+        divider,
+        /// Clicking runs the plugin command with this id.
+        button(ui-button),
+        column(list<ui-node-ref>),
+        row(list<ui-node-ref>),
+    }
+
+    record ui-button {
+        label: string,
+        command-id: string,
+    }
+
+    /// Index into the flat node list returned with a panel
+    /// (WIT has no recursive types).
+    type ui-node-ref = u32;
+
+    record panel {
+        title: string,
+        /// Node 0 is the root.
+        nodes: list<ui-node>,
+    }
+
+    enum permission {
+        /// Read envelopes (headers, flags, labels).
+        read-envelopes,
+        /// Read full message bodies.
+        read-bodies,
+        /// Return label / move / flag / archive / snooze actions.
+        modify-mail,
+        /// Return open-draft actions.
+        compose,
+        /// Outbound HTTPS to hosts listed in the manifest.
+        network,
+        /// Private key-value storage.
+        storage,
+    }
+
+    record manifest {
+        id: string,
+        name: string,
+        version: string,
+        permissions: list<permission>,
+        /// Hosts allowed when `network` is granted, e.g. "api.example.com".
+        network-hosts: list<string>,
+    }
+}
+
+/// Services the core offers to plugins. Every call is permission-checked.
+interface host {
+    use types.{envelope};
+
+    log: func(message: string);
+
+    /// Needs `read-bodies`. Plain text of a message.
+    message-text: func(account: string, mailbox: string, id: string) -> result<string, string>;
+
+    /// Needs `network`, and the host must be in the manifest.
+    http-get: func(url: string) -> result<string, string>;
+
+    /// Needs `storage`. Per-plugin key-value store.
+    storage-get: func(key: string) -> option<string>;
+    storage-set: func(key: string, value: string);
+}
+
+world plugin {
+    use types.{envelope, action, command, panel, manifest};
+
+    import host;
+
+    /// Called once at load. Declares identity and requested permissions.
+    export manifest: func() -> manifest;
+
+    /// Called for each new message after sync (needs `read-envelopes`).
+    export on-message-received: func(message: envelope) -> list<action>;
+
+    /// Commands for the palette and message toolbar.
+    export commands: func() -> list<command>;
+
+    /// Runs a command. `message` is set when invoked on an open message.
+    export run-command: func(id: string, message: option<envelope>) -> result<list<action>, string>;
+
+    /// Optional sidebar panel; return none for no panel.
+    export panel: func() -> option<panel>;
+}
