@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wax — mail for the Mac</title>
+<meta name="description" content="Wax is a small, keyboard-first mail app for the Mac, written in Rust. The core does mail; everything else is a plugin.">
+<link rel="icon" type="image/png" href="wax-icon-1024.png">
+<meta property="og:title" content="Wax — mail for the Mac">
+<meta property="og:description" content="A small, keyboard-first mail app for the Mac. The rest is plugins.">
+<meta property="og:image" content="wax-icon-1024.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root{--wax:#A11D2E;--wax-l:#D2464F;--wax-d:#5C0E1A;--ink:#1E2333;--slate:#5D6476;--paper:#E8EAEE;--white:#FFFFFF}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'Bricolage Grotesque',system-ui,sans-serif;font-size:18px;line-height:1.55}
+a{color:var(--wax)}a:hover{color:var(--wax-d)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--wax);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+header.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.mark{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+.mark img{width:40px;height:40px}
+.word{font-weight:800;letter-spacing:-0.045em;line-height:.8}
+.mark .word{font-size:34px}
+nav a{margin-left:22px;text-decoration:none;color:var(--ink);font-weight:500}
+nav a:hover{color:var(--wax)}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:40px;align-items:center;padding:56px 0 88px}
+.hero h1{margin:0;font-size:clamp(88px,15vw,184px)}
+.hero .line{margin:18px 0 0;font-size:clamp(26px,3.2vw,36px);font-weight:600;line-height:1.2;max-width:15em}
+.hero .sub{margin:18px 0 0;color:var(--slate);max-width:32em}
+.hero .seal{width:100%;max-width:420px;justify-self:center;filter:drop-shadow(0 30px 40px rgba(92,14,26,.25))}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.btn{display:inline-block;padding:13px 20px;border-radius:10px;font-weight:600;text-decoration:none;font-size:17px}
+.btn.primary{background:var(--wax);color:var(--white)}.btn.primary:hover{background:var(--wax-d);color:var(--white)}
+.btn.ghost{border:1.5px solid var(--ink);color:var(--ink)}.btn.ghost:hover{background:var(--ink);color:var(--paper)}
+.status{display:inline-block;margin-top:22px;font-size:15px;color:var(--slate)}
+section{padding:72px 0;border-top:1px solid rgba(30,35,51,.12)}
+section h2{margin:0 0 10px;font-size:clamp(34px,4.5vw,48px);font-weight:800;letter-spacing:-.02em;line-height:1.05}
+section .intro{margin:0 0 36px;color:var(--slate);max-width:36em}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:34px 40px}
+.grid h3{margin:0 0 6px;font-size:21px;font-weight:700}
+.grid p{margin:0;color:var(--slate);font-size:17px}
+kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;background:var(--white);border:1px solid #C9CED6;border-bottom-width:3px;border-radius:6px;padding:2px 7px;color:var(--ink)}
+.keys{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0;padding:0;list-style:none}
+.keys li{display:flex;align-items:center;gap:8px;color:var(--slate)}
+.dark{background:var(--ink);color:var(--paper);border-top:0}
+.dark h2{color:var(--white)}.dark .intro{color:#B9BECB}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start}
+pre{margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:15px;line-height:1.65;background:#141826;color:#E8EAEE;border-radius:14px;padding:24px;overflow-x:auto}
+pre .c{color:#8A90A0}
+.plugins{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.plugins li{display:flex;gap:14px;align-items:baseline}
+.plugins strong{color:var(--white);min-width:7.5em}
+.plugins span{color:#B9BECB}
+ol.steps{margin:0;padding-left:1.2em;max-width:40em}
+ol.steps li{margin-bottom:14px}
+code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.85em;background:rgba(30,35,51,.07);padding:1px 6px;border-radius:5px}
+footer{padding:40px 0 60px;color:var(--slate);font-size:15px;border-top:1px solid rgba(30,35,51,.12)}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
+@media (max-width:820px){
+  .hero{grid-template-columns:1fr;padding-top:24px}
+  .hero .seal{max-width:240px;grid-row:1}
+  .grid{grid-template-columns:1fr}
+  .split{grid-template-columns:1fr}
+  nav a{margin-left:14px}
+}
+@media (prefers-reduced-motion:no-preference){
+  .hero .seal{animation:press .9s cubic-bezier(.2,.9,.3,1.2) both}
+  @keyframes press{from{transform:scale(1.18) rotate(-8deg);opacity:0}to{transform:none;opacity:1}}
+}
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="mark" href="#" aria-label="Wax home"><img src="wax-icon-1024.png" alt=""><span class="word">wax</span></a>
+  <nav aria-label="Main"><a href="#features">Features</a><a href="#plugins">Plugins</a><a href="#install">Install</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
+</header>
+
+<main>
+<div class="wrap hero">
+  <div>
+    <h1 class="word">wax</h1>
+    <p class="line">Mail for the Mac. The rest is plugins.</p>
+    <p class="sub">A small, fast mail app written in Rust and run from the keyboard. The core reads, writes and files your mail. Everything else is a plugin you choose, set up in plain text files.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Build it from source</a>
+      <a class="btn ghost" href="https://github.com/tekanic/wax">View on GitHub</a>
+    </div>
+    <span class="status">Early release. Gmail and Google Workspace accounts, macOS only.</span>
+  </div>
+  <img class="seal" src="wax-icon-1024.png" alt="The Wax app icon: a red wax seal with a w pressed into it">
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What the core does</h2>
+    <p class="intro">Everything here works today, on several Gmail accounts at once.</p>
+    <div class="grid">
+      <div><h3>Every action has a key</h3><p>The bar at the bottom shows only the keys that apply where you are. <kbd>e</kbd> archives, <kbd>r</kbd> replies, <kbd>l</kbd> labels.</p></div>
+      <div><h3>Opens instantly, works offline</h3><p>Every header is cached on your Mac, so folders open at once and search covers mail you haven't opened.</p></div>
+      <div><h3>Write in Markdown</h3><p>Bold, lists, links and real tables pasted straight from a spreadsheet. Sent as clean HTML with a plain-text copy.</p></div>
+      <div><h3>Signatures, laid out</h3><p>Several per account, designed in the app with logos and links, and switched per message.</p></div>
+      <div><h3>The Sweep</h3><p>Ranks every sender by volume and how often you open their mail. One key decides their past and future mail.</p></div>
+      <div><h3>All your inboxes</h3><p>Several accounts side by side, each with its own colour, name, signatures and sender rules, plus one inbox for all of them.</p></div>
+      <div><h3>Undo send</h3><p>An eight-second review before a message leaves, with undo, and drafts saved to Gmail.</p></div>
+      <div><h3>Safe HTML mail</h3><p>Newsletters render properly in a sandbox, with remote images and tracking pixels off until you load them.</p></div>
+      <div><h3>Your settings are files</h3><p>Accounts, rules and signatures are plain text you can read, edit, back up or keep in git.</p></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="keys-h">
+  <div class="wrap">
+    <h2 id="keys-h">Hands stay on the keys</h2>
+    <p class="intro">A few of the defaults.</p>
+    <ul class="keys">
+      <li><kbd>j</kbd><kbd>k</kbd> move</li><li><kbd>e</kbd> archive</li><li><kbd>#</kbd> delete</li><li><kbd>r</kbd> reply</li><li><kbd>a</kbd> reply all</li><li><kbd>l</kbd> label</li><li><kbd>x</kbd> select</li><li><kbd>s</kbd> star</li><li><kbd>g</kbd> <kbd>i</kbd> go to Inbox</li><li><kbd>/</kbd> search</li>
+    </ul>
+  </div>
+</section>
+
+<section id="plugins" class="dark">
+  <div class="wrap split">
+    <div>
+      <h2>The rest is plugins</h2>
+      <p class="intro">Plugins run sandboxed, ask for only the access they need, and are switched on in your settings file. These are planned next.</p>
+      <ul class="plugins">
+        <li><strong>Screener</strong><span>A first email from someone new waits until you let them in.</span></li>
+        <li><strong>Snooze</strong><span>Put a message away until the day it matters.</span></li>
+        <li><strong>Spam filter</strong><span>Learns from what you move to Spam or Screened Out.</span></li>
+        <li><strong>Phishing</strong><span>Warns about lookalike senders and links that don't go where they say.</span></li>
+        <li><strong>Spelling and grammar</strong><span>Checks a draft as you write.</span></li>
+        <li><strong>MCP server</strong><span>Lets your AI assistant search and draft, with the permissions you grant.</span></li>
+      </ul>
+    </div>
+    <pre><span class="c"># ~/.config/wax/settings.toml</span>
+font = "JetBrains Mono"
+send_delay = 8
+
+[plugins.snooze]
+enabled = true
+
+[plugins.screener]
+enabled = true
+first_time_senders = "hold"</pre>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="intro">There's no signed download yet. For now, build Wax from source on an Apple silicon Mac.</p>
+    <ol class="steps">
+      <li>Install Rust from <a href="https://rustup.rs">rustup.rs</a>.</li>
+      <li>Clone the repository and build: <code>git clone https://github.com/tekanic/wax.git &amp;&amp; cd wax &amp;&amp; cargo build</code></li>
+      <li>Make the app: <code>scripts/bundle.sh</code>, then open <code>target/Wax.app</code>.</li>
+      <li>Add a Google OAuth desktop client, then sign in with Google from Settings → Accounts. The README walks through it.</li>
+    </ol>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Wax is made by Tekanics LLC.</span>
+    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>
