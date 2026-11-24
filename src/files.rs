@@ -1,13 +1,17 @@
 //! Things you made live in plain files, not in the cache database, so
-//! they can be backed up, synced and edited by hand:
+//! they can be backed up, synced and edited by hand, like Zed's:
 //!
-//!   ~/Library/Application Support/gpui-mail/
-//!     settings.toml
+//!   ~/.config/wax/                (config_dir)
+//!     settings.toml, keymap.toml
+//!     accounts/<address>/account.toml, rules.toml
 //!     signatures/<name>/signature.toml (+ logo.png, logo2.png)
+//!     identities/<address>.toml
 //!     blocks/<name>.md
-//!     rules.toml (see rules.rs)
 //!
-//! `cache.sqlite` beside them only holds what Gmail can give back.
+//!   ~/Library/Application Support/gpui-mail/   (data_dir)
+//!     cache.sqlite (only what Gmail can give back), errors.log,
+//!     google-client.json (a secret, so it stays out of ~/.config,
+//!     which people often keep in a public dotfiles repo)
 //! The TOML used here is the simple subset `key = "text"` / `key = 123`.
 
 use crate::signature::{Layout, Signature};
@@ -19,12 +23,49 @@ pub fn data_dir() -> PathBuf {
     crate::store::default_path().parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// Where settings live: ~/.config/wax (WAX_CONFIG_DIR overrides it).
+pub fn config_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("WAX_CONFIG_DIR") {
+        return PathBuf::from(dir);
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    PathBuf::from(home).join(".config/wax")
+}
+
+/// The settings that used to live beside the cache.
+const MOVED: [&str; 5] = ["settings.toml", "accounts", "signatures", "identities", "blocks"];
+
+/// Move settings from the old folder (beside the cache) to config_dir, once.
+/// Each item moves only if config_dir doesn't have it yet, so nothing there
+/// is ever overwritten. Returns what moved.
+pub fn migrate_config() -> Result<Vec<String>> {
+    migrate_between(&data_dir(), &config_dir())
+}
+
+fn migrate_between(old: &Path, new: &Path) -> Result<Vec<String>> {
+    let mut moved = Vec::new();
+    for name in MOVED {
+        let from = old.join(name);
+        let to = new.join(name);
+        if from.exists() && !to.exists() {
+            std::fs::create_dir_all(new)?;
+            std::fs::rename(&from, &to)?;
+            moved.push(name.to_string());
+        }
+    }
+    if !moved.is_empty() {
+        let note = old.join("SETTINGS-MOVED.txt");
+        std::fs::write(note, format!("Wax settings now live in {}\n", new.display())).ok();
+    }
+    Ok(moved)
+}
+
 pub fn signatures_dir() -> PathBuf {
-    data_dir().join("signatures")
+    config_dir().join("signatures")
 }
 
 pub fn settings_file() -> PathBuf {
-    data_dir().join("settings.toml")
+    config_dir().join("settings.toml")
 }
 
 // ----- Tiny TOML subset ------------------------------------------------------
@@ -107,7 +148,7 @@ pub fn load_settings() -> Option<crate::settings::Settings> {
 }
 
 pub fn save_settings(s: &crate::settings::Settings) -> Result<()> {
-    std::fs::create_dir_all(data_dir())?;
+    std::fs::create_dir_all(config_dir())?;
     let id = |v: Option<i64>| v.map(|i| i.to_string()).unwrap_or_else(|| "0".into());
     let text = format!(
         "# Wax settings. Edit here or in the app (⌘,).\n\
@@ -336,5 +377,24 @@ mod tests {
         let m = parse(&format!("note = {}\nwidth = 72 # px\n# comment\n", quote(tricky)));
         assert_eq!(m["note"], tricky);
         assert_eq!(m["width"], "72");
+    }
+}
+
+#[cfg(test)]
+mod migrate_tests {
+    #[test]
+    fn moves_once_and_never_overwrites() {
+        let base = std::env::temp_dir().join(format!("wax-migrate-{}", std::process::id()));
+        let (old, new) = (base.join("old"), base.join("new"));
+        std::fs::create_dir_all(old.join("accounts/a@b.c")).unwrap();
+        std::fs::write(old.join("settings.toml"), "monospaced = true").unwrap();
+        std::fs::create_dir_all(new.join("blocks")).unwrap();
+        std::fs::create_dir_all(old.join("blocks")).unwrap();
+        let moved = super::migrate_between(&old, &new).unwrap();
+        assert_eq!(moved, vec!["settings.toml", "accounts"]);
+        assert!(new.join("accounts/a@b.c").is_dir() && !old.join("settings.toml").exists());
+        assert!(old.join("blocks").exists(), "existing new/blocks is left alone");
+        assert!(super::migrate_between(&old, &new).unwrap().is_empty());
+        std::fs::remove_dir_all(base).ok();
     }
 }

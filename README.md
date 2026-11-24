@@ -74,7 +74,7 @@ integrations) will ship as sandboxed WebAssembly plugins.
       the last cell), the Table button (`⌥⌘T`) inserts one; number columns
       right-align
 - [x] Blocks: while writing, the message list's column lists blocks (Markdown
-      files in `~/Library/Application Support/gpui-mail/blocks/`, `{{cursor}}`
+      files in `~/.config/wax/blocks/`, `{{cursor}}`
       marks where typing resumes). Drag one into the message or click to add it
       at the cursor
 - [x] From addresses (identities, as in Thunderbird): Settings → From addresses adds
@@ -106,24 +106,27 @@ integrations) will ship as sandboxed WebAssembly plugins.
 
 ## Your files
 
-Things you make live as plain files in `~/Library/Application Support/gpui-mail/`,
-so they can be backed up, synced or edited by hand:
+Everything you set up is plain text in `~/.config/wax/` (like Zed's
+`~/.config/zed`), so it can be backed up, kept in git or edited by hand. Wax
+picks up a saved change within two seconds; Settings → General → Show folder
+opens it.
 
 ```
 settings.toml                       font, list while writing
-signatures/<name>/signature.toml    fields, layout, font, links, its account (+ logo.png, logo2.png)
-signatures/.deleted/                deleted signatures, kept just in case
+keymap.toml                         every shortcut; defaults listed, commented out
 accounts/<email>/account.toml       sender name, sign-in, default signatures
 accounts/<email>/rules.toml         that account's sender rules: "address" = "keep" or a label
+signatures/<name>/signature.toml    fields, layout, font, links, its account (+ logo.png, logo2.png)
+signatures/.deleted/                deleted signatures, kept just in case
 identities/<email>.toml             extra From addresses (and the account they send through)
-google-client.json                  your Google OAuth client, if you brought one
-errors.log                          what went wrong (Settings → Problems)
 blocks/<name>.md                    blocks for the composer ({{cursor}} = start here)
 ```
 
-`cache.sqlite` next to them holds only what can be fetched from Gmail again, plus
-the unsent-message autosave. Edits to `rules.toml` are picked up while the app runs
-(on the next mail check, or when the Sweep opens).
+`~/Library/Application Support/gpui-mail/` keeps what isn't a setting:
+`cache.sqlite` (only what can be fetched from Gmail again, plus the unsent-message
+autosave), `errors.log` (Settings → Problems) and `google-client.json`, your Google
+OAuth client. That one is a secret, so it stays out of `~/.config`. Settings from
+older versions move to `~/.config/wax` on first start.
 
 `gpui-mail --import-signature <file.html> <name>` brings in an HTML signature
 (e.g. from Thunderbird's `sig_file`), logos and links included.
@@ -132,6 +135,9 @@ the unsent-message autosave. Edits to `rules.toml` are picked up while the app r
 
 Shortcuts are defined once in `src/keys.rs`; the same table drives the key
 bindings, the hint bar at the bottom of the window and the `g` menu.
+`~/.config/wax/keymap.toml` changes any of them: a section per place
+(`[list]`, `[writing]`, `[global]`…), lines like `"shift-e" = "archive"`, and
+`"none"` to switch a key off. Mistakes show in the status bar and Settings → Problems.
 
 | Keys | Where | Does |
 | --- | --- | --- |

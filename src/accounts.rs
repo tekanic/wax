@@ -100,7 +100,7 @@ impl Account {
 }
 
 pub fn root() -> PathBuf {
-    data_dir().join("accounts")
+    crate::files::config_dir().join("accounts")
 }
 
 fn clean(email: &str) -> String {

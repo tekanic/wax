@@ -14,6 +14,7 @@ mod blocks;
 mod compose;
 mod errlog;
 mod compose_view;
+mod config_watch;
 mod files;
 mod formatting;
 mod html_view;
@@ -366,6 +367,8 @@ struct MailApp {
     /// Message counts of the Sweep's labels, shown in the sidebar.
     /// Server counts per folder of the account on screen: (total, unread).
     label_counts: std::collections::HashMap<String, (u64, u64)>,
+    /// When the files in ~/.config/wax last changed (config_watch.rs).
+    config_seen: config_watch::Seen,
     /// App defaults (font, layout, default signatures).
     settings: settings::Settings,
     signatures: Vec<signature::Signature>,
@@ -460,6 +463,7 @@ impl MailApp {
             rule_names: Default::default(),
             rules_seen: None,
             label_counts: Default::default(),
+            config_seen: Default::default(),
             settings: settings::Settings::default(),
             signatures: Vec::new(),
             identities: Vec::new(),
@@ -484,6 +488,7 @@ impl MailApp {
         app.signatures = files::load_signatures();
         app.identities = identity::load();
         app.assign_signatures();
+        app.watch_config(cx);
         match app.accounts.first().map(|a| a.email.clone()) {
             Some(first) => {
                 app.account = first.as_str().into();
@@ -2643,7 +2648,7 @@ impl MailApp {
                 .hints
                 .iter()
                 .filter(|h| h.mode == mode || h.mode == Mode::Global)
-                .map(|h| (h.keys.into(), h.label.into()))
+                .map(|h| (h.keys.clone().into(), h.label.into()))
                 .collect()
         };
         let status = match &self.pending_send {
@@ -3471,6 +3476,16 @@ impl Render for MailApp {
 }
 
 fn main() {
+    // Settings moved to ~/.config/wax; bring old ones along before anything reads them.
+    match files::migrate_config() {
+        Ok(moved) if !moved.is_empty() => {
+            errlog::record("", &format!("Moved settings to {}: {}", files::config_dir().display(), moved.join(", ")));
+        }
+        Err(e) => {
+            errlog::record("", &format!("Could not move settings to {}: {e:#}", files::config_dir().display()));
+        }
+        _ => {}
+    }
     let acct = crate::accounts::first_email();
     let args: Vec<String> = std::env::args().collect();
     if let Some(pos) = args.iter().position(|a| a == "--search") {
@@ -3713,9 +3728,12 @@ fn main() {
         gpui_kit::init(cx);
         // Dark component theme so inputs match the app.
         gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
-        let keymap = keys::keymap();
-        cx.bind_keys(keymap.bindings.clone());
-        cx.set_global(keymap);
+        // Bindings gpui-kit registered for its own widgets; kept when ours reload.
+        let base: Vec<KeyBinding> = cx.key_bindings().borrow().bindings().cloned().collect();
+        cx.set_global(keys::BaseBindings(base));
+        for e in keys::apply(cx) {
+            errlog::record("", &e);
+        }
         cx.on_action(|_: &Quit, cx| cx.quit());
 
         let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);

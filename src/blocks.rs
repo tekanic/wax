@@ -26,7 +26,7 @@ const STARTERS: &[(&str, &str)] = &[
 ];
 
 pub fn folder() -> std::path::PathBuf {
-    store::default_path().with_file_name("blocks")
+    crate::files::config_dir().join("blocks")
 }
 
 /// Every block in the folder, starters written on first use.

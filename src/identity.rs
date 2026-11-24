@@ -9,7 +9,7 @@
 //! it's added under Gmail Settings → Accounts → "Send mail as"; until then
 //! it rewrites the From to the account address.
 
-use crate::files::{data_dir, parse, quote};
+use crate::files::{parse, quote};
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -37,7 +37,7 @@ impl Identity {
 }
 
 pub fn dir() -> PathBuf {
-    data_dir().join("identities")
+    crate::files::config_dir().join("identities")
 }
 
 fn file_name(email: &str) -> String {

@@ -690,6 +690,15 @@ impl MailApp {
                 this.settings.hide_list_when_writing = false;
                 this.save_settings(cx)
             })));
+        let files_buttons = div()
+            .flex()
+            .gap_1p5()
+            .child(choice("open-config", "Show folder", false).on_click(cx.listener(|_, _, _, _| {
+                std::process::Command::new("open").arg(crate::files::config_dir()).spawn().ok();
+            })))
+            .child(choice("open-keymap", "Edit shortcuts", false).on_click(cx.listener(|_, _, _, _| {
+                std::process::Command::new("open").arg("-t").arg(crate::keys::keymap_file()).spawn().ok();
+            })));
         let at_login = crate::login::enabled();
         let login = div()
             .flex()
@@ -710,6 +719,11 @@ impl MailApp {
                     .child(setting_row("Font", "Used while writing and in the message you send. Each message can switch.", font))
                     .child(setting_row("Message list while writing", "Hiding it gives the message more room.", hide))
                     .child(setting_row("Open at login", "Starts Wax when you sign in to your Mac.", login))
+                    .child(setting_row(
+                        "Settings files",
+                        "Everything here is plain text in ~/.config/wax. Edit the files and Wax picks up the change when you save.",
+                        files_buttons,
+                    ))
                     .child(div().pt_4().text_sm().text_color(rgb(MUTED)).child(
                         "Signatures belong to accounts: design them and pick each account's defaults under Signatures.",
                     )),
