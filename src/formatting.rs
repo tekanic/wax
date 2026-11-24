@@ -449,22 +449,45 @@ impl MailApp {
         cx.notify();
     }
 
-    /// The From row; only shown once there's more than one address.
+    /// Send from another account (or one of its From addresses). A draft
+    /// already saved in the old account's Drafts stays there: nothing is
+    /// deleted from an account the message has left.
+    pub fn set_sender(&mut self, account: String, from: Option<(String, String)>, cx: &mut Context<Self>) {
+        let here = self.account.to_string();
+        if let Some(c) = &mut self.composer {
+            let current = if c.account.is_empty() { here } else { c.account.clone() };
+            if !current.eq_ignore_ascii_case(&account) {
+                c.account = account;
+                c.server_draft = None;
+            }
+        }
+        self.set_from(from, cx);
+    }
+
+    /// The From row: every account's address and its extra From addresses;
+    /// only shown once there's more than one to pick from.
     pub fn render_from_row(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let c = self.composer.as_ref()?;
         let account = if c.account.is_empty() { self.account.to_string() } else { c.account.clone() };
-        let all = self.identities_for(&account);
+        let mut all = Vec::new();
+        for a in &self.accounts {
+            all.extend(self.identities_for(&a.email));
+        }
+        if all.is_empty() {
+            all = self.identities_for(&account);
+        }
         if all.len() < 2 {
             return None;
         }
         let current = self.identity_in(&account, c.from.as_ref());
         let mut pills = div().flex().flex_wrap().items_center().gap_1p5();
         for who in all {
-            let on = who.email.eq_ignore_ascii_case(&current.email);
+            let on = who.account.eq_ignore_ascii_case(&account) && who.email.eq_ignore_ascii_case(&current.email);
             let from = Some((who.name.clone(), who.email.clone()));
+            let owner = who.account.clone();
             pills = pills.child(
                 div()
-                    .id(SharedString::from(format!("from-{}", who.id)))
+                    .id(SharedString::from(format!("from-{}-{}", who.account, who.email)))
                     .h(px(24.))
                     .px_2p5()
                     .flex()
@@ -475,7 +498,7 @@ impl MailApp {
                     .border_1()
                     .when(on, |d| d.bg(rgb(SELECTED)).border_color(rgb(ACCENT)).text_color(rgb(TEXT)))
                     .when(!on, |d| d.border_color(rgb(BORDER)).text_color(rgb(SUBTLE)).hover(|d| d.bg(rgb(HOVER))))
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_from(from.clone(), cx)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_sender(owner.clone(), from.clone(), cx)))
                     .child(who.email.clone()),
             );
         }

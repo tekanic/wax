@@ -19,6 +19,8 @@ mod formatting;
 mod html_view;
 mod identity;
 mod live;
+mod login;
+mod notify;
 mod keys;
 mod labels;
 mod mail;

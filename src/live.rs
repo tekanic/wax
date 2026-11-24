@@ -33,6 +33,7 @@ impl MailApp {
     /// Watch every account's Inbox. Each account has its own watcher and
     /// connection; it stops when the account is removed.
     pub fn start_watches(&mut self, cx: &mut Context<Self>) {
+        crate::notify::request();
         let emails: Vec<String> = self.accounts.iter().map(|a| a.email.clone()).collect();
         self.watch.retain(|k, _| emails.contains(k));
         for email in emails {
@@ -252,7 +253,5 @@ fn set_dock_badge(unseen: u64) {
 
 /// A macOS notification banner.
 fn notify(title: &str, body: &str) {
-    let q = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
-    let script = format!("display notification {} with title {}", q(body), q(title));
-    std::process::Command::new("osascript").args(["-e", &script]).output().ok();
+    crate::notify::show(title, body);
 }

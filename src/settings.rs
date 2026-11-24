@@ -220,6 +220,20 @@ impl MailApp {
         cx.notify();
     }
 
+    fn set_open_at_login(&mut self, on: bool, cx: &mut Context<Self>) {
+        match crate::login::set(on) {
+            Ok(()) => {
+                self.status = if on { "Wax will open when you sign in" } else { "Wax won't open at sign-in" }.into();
+                self.status_is_error = false;
+            }
+            Err(e) => {
+                self.status = format!("Could not change Open at login: {e:#}").into();
+                self.status_is_error = true;
+            }
+        }
+        cx.notify();
+    }
+
     pub fn open_settings(&mut self, pane: Pane, window: &mut Window, cx: &mut Context<Self>) {
         if self.composer.is_some() && pane == Pane::Writing {
             // Keep it simple: settings replace the reading panes only.
@@ -617,7 +631,7 @@ impl MailApp {
             .border_color(rgb(BORDER))
             .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).mr_4().child("Settings"))
             .child(tab("pane-accounts", "Accounts", Pane::Accounts))
-            .child(tab("pane-writing", "Writing", Pane::Writing))
+            .child(tab("pane-writing", "General", Pane::Writing))
             .child(tab("pane-addresses", "From addresses", Pane::Addresses))
             .child(tab("pane-labels", "Labels", Pane::Labels))
             .child(tab("pane-problems", "Problems", Pane::Problems))
@@ -676,6 +690,12 @@ impl MailApp {
                 this.settings.hide_list_when_writing = false;
                 this.save_settings(cx)
             })));
+        let at_login = crate::login::enabled();
+        let login = div()
+            .flex()
+            .gap_1p5()
+            .child(choice("login-on", "On", at_login).on_click(cx.listener(|this, _, _, cx| this.set_open_at_login(true, cx))))
+            .child(choice("login-off", "Off", !at_login).on_click(cx.listener(|this, _, _, cx| this.set_open_at_login(false, cx))));
         div()
             .id("writing-pane")
             .size_full()
@@ -689,6 +709,7 @@ impl MailApp {
                     .flex_col()
                     .child(setting_row("Font", "Used while writing and in the message you send. Each message can switch.", font))
                     .child(setting_row("Message list while writing", "Hiding it gives the message more room.", hide))
+                    .child(setting_row("Open at login", "Starts Wax when you sign in to your Mac.", login))
                     .child(div().pt_4().text_sm().text_color(rgb(MUTED)).child(
                         "Signatures belong to accounts: design them and pick each account's defaults under Signatures.",
                     )),

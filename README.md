@@ -8,7 +8,9 @@ Wax is a bare-bones, plugin-extensible email client for macOS, built in Rust on
 [GPUI](https://gpui.rs) (Zed's UI framework) via [gpui-kit](https://gpui-kit.com).
 
 The repository and binary are still called `gpui-mail`; the app shows as Wax.
-Build the app bundle with `cargo build && scripts/bundle.sh` (makes `target/Wax.app`).
+Install it with `scripts/install.sh`: a release build, signed with your Apple Development
+certificate if you have one, installed as `~/Applications/Wax.app` and opened. Run it again
+to update. `scripts/bundle.sh debug` makes a debug bundle in `target/debug/Wax.app`.
 
 The core only does mail. Everything else (rules, snooze, AI actions,
 integrations) will ship as sandboxed WebAssembly plugins.
