@@ -15,10 +15,11 @@ impl Guest for Runaway {
             version: env!("CARGO_PKG_VERSION").into(),
             permissions: vec![Permission::ReadEnvelopes],
             network_hosts: vec![],
+            scan_existing: false,
         }
     }
 
-    fn on_message_received(message: Envelope) -> Vec<Action> {
+    fn on_message_received(message: Envelope, _reason: CheckReason) -> Vec<Action> {
         if message.subject == "loop" {
             let mut n: u64 = 0;
             loop {

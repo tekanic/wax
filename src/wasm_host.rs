@@ -23,7 +23,7 @@ mod bindings {
 use bindings::wax;
 /// The generated bindings for one instance.
 type Plugin_ = bindings::Plugin;
-pub use wax::plugin::types::{Action, Address, Command, CommandScope, Envelope, Link, Manifest, MessageContent, Permission, Sender, SenderView, ViewKey};
+pub use wax::plugin::types::{Action, Address, CheckReason, Command, CommandScope, Envelope, Link, Manifest, MessageContent, Permission, Sender, SenderView, ViewKey};
 
 /// wasmtime has its own error type.
 fn w<T>(r: wasmtime::Result<T>) -> Result<T> {
@@ -32,6 +32,7 @@ fn w<T>(r: wasmtime::Result<T>) -> Result<T> {
 
 /// Instructions one call may run (roughly; Wasmtime's fuel unit).
 const FUEL: u64 = 500_000_000;
+const MAX_OVERRUNS: u32 = 5;
 /// Memory one instance may grow to.
 const MEMORY: usize = 64 << 20;
 
@@ -86,6 +87,8 @@ pub struct Arrival {
     /// (mailbox, id) of every message in the batch, and their Message-IDs.
     pub batch: Vec<(String, String)>,
     pub batch_mids: Vec<String>,
+    /// Messages read-message may fetch; when None, those in `batch`.
+    pub readable: Option<std::collections::HashSet<(String, String)>>,
 }
 
 impl WasiView for State {
@@ -112,8 +115,12 @@ impl wax::plugin::host::Host for State {
         if !self.grants.contains(&Permission::ReadBodies) {
             return Err("needs read-bodies".into());
         }
-        if !self.arrival.batch.iter().any(|(m, i)| *m == mailbox && *i == id) {
-            return Err("only messages being handled now can be read".into());
+        let ok = match &self.arrival.readable {
+            Some(r) => r.contains(&(mailbox.clone(), id.clone())),
+            None => self.arrival.batch.iter().any(|(m, i)| *m == mailbox && *i == id),
+        };
+        if !ok {
+            return Err("only messages being handled now (and, in a sweep, from the last 90 days) can be read".into());
         }
         let key = (account.clone(), mailbox.clone(), id.clone());
         if let Some(hit) = self.arrival.contents.lock().unwrap().get(&key) {
@@ -214,6 +221,7 @@ pub struct Plugin {
     /// Why it isn't running (failed to load, or trapped this run).
     pub broken: Option<String>,
     component: Option<Component>,
+    overruns: u32,
 }
 
 impl Plugin {
@@ -222,6 +230,12 @@ impl Plugin {
     }
     pub fn requested(&self) -> Vec<Permission> {
         self.manifest.as_ref().map(|m| m.permissions.clone()).unwrap_or_default()
+    }
+    pub fn version(&self) -> String {
+        self.manifest.as_ref().map(|m| m.version.clone()).unwrap_or_default()
+    }
+    pub fn scans(&self) -> bool {
+        self.manifest.as_ref().is_some_and(|m| m.scan_existing)
     }
     pub fn running(&self) -> bool {
         self.enabled && self.broken.is_none() && self.component.is_some()
@@ -264,7 +278,7 @@ impl Host {
                 continue;
             }
             let id = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            let mut plugin = Plugin { id, dir: dir.clone(), manifest: None, enabled: false, grants: Vec::new(), broken: None, component: None };
+            let mut plugin = Plugin { id, dir: dir.clone(), manifest: None, enabled: false, grants: Vec::new(), broken: None, component: None, overruns: 0 };
             match Component::from_file(&self.engine, dir.join("plugin.wasm")) {
                 Ok(c) => plugin.component = Some(c),
                 Err(e) => plugin.broken = Some(format!("could not load: {e:#}")),
@@ -309,17 +323,24 @@ impl Host {
     /// Run one export of plugin `i`, collecting what it logged. A plugin
     /// that traps, loops or runs out of memory is switched off for this run.
     fn run<T>(&mut self, i: usize, problems: &mut Vec<String>, f: impl FnOnce(&Plugin_, &mut Store<State>) -> wasmtime::Result<T>) -> Option<T> {
-        let p = &self.plugins[i];
-        match self.call(p, f) {
+        let name = self.plugins[i].name();
+        match self.call(&self.plugins[i], f) {
             Ok((out, logs)) => {
+                self.plugins[i].overruns = 0;
                 for l in logs {
-                    problems.push(format!("{}: {l}", p.name()));
+                    problems.push(format!("{}: {l}", name));
                 }
                 Some(out)
             }
             Err(e) => {
                 let why = format!("{e:#}");
-                problems.push(format!("{} stopped and was switched off until Wax restarts: {why}", p.name()));
+                let overran = why.contains("all fuel consumed");
+                if overran && self.plugins[i].overruns < MAX_OVERRUNS {
+                    self.plugins[i].overruns += 1;
+                    problems.push(format!("{} ran out of time on one message and skipped it", name));
+                    return None;
+                }
+                problems.push(format!("{} stopped and was switched off until Wax restarts: {why}", name));
                 self.plugins[i].broken = Some(why);
                 None
             }
@@ -343,14 +364,22 @@ impl Host {
 
     /// Ask every running plugin about a new message. Returns (plugin id,
     /// actions it's allowed to take) and problems to report.
-    pub fn arrived(&mut self, message: &Envelope) -> (Vec<(String, Vec<Action>)>, Vec<String>) {
+    pub fn arrived(&mut self, message: &Envelope, reason: CheckReason) -> (Vec<(String, Vec<Action>)>, Vec<String>) {
+        self.check(message, reason, None)
+    }
+
+    pub fn running_checkers(&self) -> Vec<(String, String)> {
+        (0..self.plugins.len()).filter(|&i| self.reads(i)).map(|i| (self.plugins[i].id.clone(), self.plugins[i].version())).collect()
+    }
+
+    pub fn check(&mut self, message: &Envelope, reason: CheckReason, only: Option<&str>) -> (Vec<(String, Vec<Action>)>, Vec<String>) {
         let mut out = Vec::new();
         let mut problems = Vec::new();
         for i in 0..self.plugins.len() {
-            if !self.reads(i) {
+            if !self.reads(i) || only.is_some_and(|id| id != self.plugins[i].id) {
                 continue;
             }
-            if let Some(actions) = self.run(i, &mut problems, |b, s| b.call_on_message_received(s, message)) {
+            if let Some(actions) = self.run(i, &mut problems, |b, s| b.call_on_message_received(s, message, reason)) {
                 let ok = self.permitted(i, actions, &mut problems);
                 if !ok.is_empty() {
                     out.push((self.plugins[i].id.clone(), ok));
@@ -431,7 +460,7 @@ impl Host {
 
 fn allowed(a: &Action, grants: &[Permission]) -> bool {
     match a {
-        Action::Notify(_) => true,
+        Action::Notify(_) | Action::Warn(_) => true,
         Action::OpenDraft(_) => grants.contains(&Permission::Compose),
         _ => grants.contains(&Permission::ModifyMail),
     }
@@ -529,7 +558,7 @@ mod tests {
         assert_eq!(h.plugins.len(), 1);
         assert!(!h.plugins[0].enabled);
         assert!(root.join("filter-rules/grants.toml").exists());
-        let (acts, _) = h.arrived(&mail("x", "a@b.c"));
+        let (acts, _) = h.arrived(&mail("x", "a@b.c"), super::CheckReason::Arrived);
         assert!(acts.is_empty());
     }
 
@@ -543,20 +572,20 @@ mod tests {
         h.load_from(&root);
         assert_eq!(h.plugins[0].name(), "Filter rules");
         assert!(h.plugins[0].running(), "{:?}", h.plugins[0].broken);
-        let (acts, problems) = h.arrived(&mail("Your Invoice #4", "shop@example.com"));
+        let (acts, problems) = h.arrived(&mail("Your Invoice #4", "shop@example.com"), super::CheckReason::Arrived);
         assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(acts, vec![("filter-rules".to_string(), vec![Action::AddLabel("Receipts".into())])]);
-        let (acts, _) = h.arrived(&mail("hello", "x@spam.test"));
+        let (acts, _) = h.arrived(&mail("hello", "x@spam.test"), super::CheckReason::Arrived);
         assert_eq!(acts[0].1, vec![Action::Archive]);
-        let (acts, _) = h.arrived(&mail("hello", "friend@example.com"));
+        let (acts, _) = h.arrived(&mail("hello", "friend@example.com"), super::CheckReason::Arrived);
         assert!(acts.is_empty());
         // Rules on recipients.
         let cfg = "to contains \"team@acme.test\" => label \"Team\"\n";
         std::fs::write(root.join("filter-rules/config.toml"), cfg).unwrap();
         let to_team = Envelope { to: vec![Address { name: Some("Team".into()), email: "team@acme.test".into() }], ..mail("hello", "x@y.z") };
-        let (acts, _) = h.arrived(&to_team);
+        let (acts, _) = h.arrived(&to_team, super::CheckReason::Arrived);
         assert_eq!(acts[0].1, vec![Action::AddLabel("Team".into())]);
-        assert!(h.arrived(&mail("hello", "x@y.z")).0.is_empty());
+        assert!(h.arrived(&mail("hello", "x@y.z"), super::CheckReason::Arrived).0.is_empty());
     }
 
     #[test]
@@ -566,7 +595,7 @@ mod tests {
         let Some(()) = install(&root, "test-runaway", "wax_test_runaway.wasm", Some(&[Permission::ReadEnvelopes]), "") else { return };
         let mut h = Host::new().unwrap();
         h.load_from(&root);
-        let (acts, problems) = h.arrived(&mail("hi", "a@b.c"));
+        let (acts, problems) = h.arrived(&mail("hi", "a@b.c"), super::CheckReason::Arrived);
         assert!(acts.is_empty());
         assert!(problems[0].contains("refused"), "{problems:?}");
     }
@@ -579,13 +608,19 @@ mod tests {
             let mut h = Host::new().unwrap();
             h.load_from(&root);
             let started = std::time::Instant::now();
-            let (acts, problems) = h.arrived(&mail(subject, "a@b.c"));
-            assert!(acts.is_empty());
+            let mut problems = h.arrived(&mail(subject, "a@b.c"), super::CheckReason::Arrived).1;
+            if subject == "loop" {
+                for _ in 0..super::MAX_OVERRUNS {
+                    assert!(problems[0].contains("skipped"), "{problems:?}");
+                    assert!(h.plugins[0].running());
+                    problems = h.arrived(&mail(subject, "a@b.c"), super::CheckReason::Arrived).1;
+                }
+            }
             assert!(problems[0].contains("stopped"), "{subject}: {problems:?}");
-            assert!(started.elapsed().as_secs() < 20, "{subject} took {:?}", started.elapsed());
+            assert!(started.elapsed().as_secs() < 60, "{subject} took {:?}", started.elapsed());
             assert!(!h.plugins[0].running());
             // Once off, it isn't called again.
-            let (_, problems) = h.arrived(&mail(subject, "a@b.c"));
+            let (_, problems) = h.arrived(&mail(subject, "a@b.c"), super::CheckReason::Arrived);
             assert!(problems.is_empty());
         }
     }
@@ -691,7 +726,7 @@ mod tests {
             let date = chrono::DateTime::from_timestamp(e.ts, 0).map(|d| d.to_rfc3339());
             let m = Envelope { date, ..mail(&e.subject, &e.from_email) };
             let m = Envelope { account: me.into(), id: e.id.clone(), message_id: e.message_id.clone(), ..m };
-            let (acts, problems) = h.arrived(&m);
+            let (acts, problems) = h.arrived(&m, super::CheckReason::Arrived);
             assert!(problems.is_empty(), "{problems:?}");
             acts.iter().any(|(_, a)| a.contains(&Action::MoveTo("Lobby".into())))
         };
@@ -703,7 +738,7 @@ mod tests {
         assert!(!held(&mut h, &batch[5]), "more than 3 days old");
         // Another account isn't screened.
         let other = Envelope { account: "other@x.test".into(), ..mail("hi", "new@shop.test") };
-        assert!(h.arrived(&other).0.is_empty());
+        assert!(h.arrived(&other, super::CheckReason::Arrived).0.is_empty());
     }
 
     #[test]
@@ -751,13 +786,15 @@ mod tests {
         let mut h = Host::new().unwrap();
         h.load_from(&root);
         let fake = Envelope { from: vec![Address { name: Some("PayPal".into()), email: "service@paypa1-help.net".into() }], ..mail("Your receipt", "x@y.z") };
-        let (acts, problems) = h.arrived(&fake);
+        let (acts, problems) = h.arrived(&fake, super::CheckReason::Arrived);
         assert!(problems.is_empty(), "{problems:?}");
         let acts = &acts[0].1;
         assert_eq!(acts[0], Action::AddLabel("Phishy".into()));
-        let Action::Notify(why) = &acts[1] else { panic!("{acts:?}") };
+        let Action::Warn(warning) = &acts[1] else { panic!("{acts:?}") };
+        assert!(warning.starts_with("Possible phishing"), "{warning}");
+        let Action::Notify(why) = &acts[2] else { panic!("{acts:?}") };
         assert!(why.contains("Paypal") && why.contains("paypa1-help.net"), "{why}");
         let real = Envelope { from: vec![Address { name: Some("PayPal".into()), email: "service@paypal.com".into() }], ..mail("Your receipt", "x@y.z") };
-        assert!(h.arrived(&real).0.is_empty());
+        assert!(h.arrived(&real, super::CheckReason::Arrived).0.is_empty());
     }
 }

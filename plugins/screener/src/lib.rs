@@ -78,10 +78,14 @@ impl Guest for Screener {
             version: env!("CARGO_PKG_VERSION").into(),
             permissions: vec![Permission::ReadEnvelopes, Permission::ModifyMail, Permission::Storage],
             network_hosts: vec![],
+            scan_existing: false,
         }
     }
 
-    fn on_message_received(m: Envelope) -> Vec<Action> {
+    fn on_message_received(m: Envelope, reason: CheckReason) -> Vec<Action> {
+        if reason != CheckReason::Arrived {
+            return Vec::new();
+        }
         let account = m.account.to_lowercase();
         if !m.mailbox.eq_ignore_ascii_case("INBOX") || !accounts(&config()).contains(&account) {
             return Vec::new();

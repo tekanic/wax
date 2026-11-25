@@ -4,7 +4,7 @@ Wax keeps its core small. Features like the Sweep and Filter rules are plugins:
 WebAssembly components that Wax runs in a sandbox. This guide takes you from an
 empty folder to a working plugin, then covers the whole interface.
 
-- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.4.0`
+- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.5.0`
 - Host: [`src/wasm_host.rs`](../src/wasm_host.rs)
 - Examples: [`plugins/sweep`](../plugins/sweep) (a sender view),
   [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail),
@@ -80,10 +80,14 @@ impl Guest for Urgent {
             version: env!("CARGO_PKG_VERSION").into(),
             permissions: vec![Permission::ReadEnvelopes, Permission::ModifyMail],
             network_hosts: vec![],
+            scan_existing: false,
         }
     }
 
-    fn on_message_received(message: Envelope) -> Vec<Action> {
+    fn on_message_received(message: Envelope, reason: CheckReason) -> Vec<Action> {
+        if reason != CheckReason::Arrived {
+            return vec![];
+        }
         if message.subject.to_lowercase().contains("urgent") {
             vec![Action::Star(true)]
         } else {
@@ -151,7 +155,7 @@ you learn in storage (`storage-get` and `storage-set`).
 | Export | When Wax calls it | Needs |
 |---|---|---|
 | `manifest` | At load, and whenever the plugins reload | — |
-| `on-message-received` | Each new Inbox message that sender rules didn't file, **before** it's shown or announced | `read-envelopes` |
+| `on-message-received` | Each new Inbox message that sender rules didn't file, **before** it's shown or announced; and for checkers, existing mail too (see below) | `read-envelopes` |
 | `get-sender-view` | When you open the Sweep (`g w`); the first running plugin that returns a view wins | `read-envelopes` |
 | `on-sender-key` | When you press one of your view's keys on a sender row | `read-envelopes` |
 | `commands` | At load, and each time one of your commands' menus opens (so choices can show current times) | — |
@@ -167,6 +171,36 @@ A message a plugin moves or archives never appears in the Inbox or as a
 notification. The actions themselves then run in the background over IMAP,
 labels and flags first, then the move or archive. Wax waits for every plugin
 before showing new mail, so keep `on-message-received` quick.
+
+### Checking mail that's already there
+
+`on-message-received` gets a `check-reason` saying why it's being called:
+
+| Reason | When | Actions Wax carries out |
+|---|---|---|
+| `arrived` | New mail, before it's shown | All you're granted |
+| `existing` | The first sweep of mail already in your folders | `add-label`, `warn` |
+| `opened` | A message is opened that this version of the plugin hasn't checked (in any folder, Spam included) | `add-label`, `warn` |
+| `not-spam` | You move a message out of Spam; labels go on before it moves | `add-label`, `warn` |
+
+For anything but `arrived`, Wax quietly drops every other action, so an old
+message is never moved or archived by a plugin. Plugins that only sort new
+mail (filter rules, the Screener) return nothing unless the reason is
+`arrived`.
+
+Set `scan-existing: true` in the manifest to get the sweep. When the plugin is
+switched on, or a new version of it loads, Wax checks every cached message
+outside Spam, Trash and Drafts, once each (duplicates across labels count
+once), with progress in the status bar. The plugin can `read-message` mail
+from the last 90 days; older mail is checked on its envelope alone. Settings →
+Plugins has **Check existing mail** to run it again for anything not yet
+checked. Wax remembers which version checked which message, so bumping your
+version rechecks everything.
+
+`warn(text)` keeps a warning with the message: it shows as an amber ⚠ banner
+above the message whenever it's opened, in any folder. It needs no permission.
+
+[`plugins/phishing`](../plugins/phishing) uses all of this.
 
 [`plugins/screener`](../plugins/screener) is a complete example: it holds mail
 from strangers in the Lobby using `knows-sender`, and remembers when each
@@ -197,6 +231,7 @@ action you weren't granted is refused and reported.
 | `mark-read(bool)` | Read or unread | Works |
 | `star(bool)` | Star or unstar | Works |
 | `notify(text)` | Shows text in the status bar (needs no permission) | Works |
+| `warn(text)` | Keeps a warning shown above the message in the reader (needs no permission) | Works |
 | `file-sender(decision)` | Files all of a sender's mail, past and future (sender views only) | Works |
 | `snooze-until(time)` | From a command: out of the Inbox under a Snoozed label until the RFC 3339 time, then back unread | Works |
 | `follow-up(time)` | From a command: at the time, back to the Inbox unless someone else wrote in the thread since | Works |
@@ -214,7 +249,7 @@ All live in `wax::plugin::host`.
 | `senders(account, limit)` | Senders by volume from the local cache, with their rule | `read-envelopes` |
 | `knows-sender(message)` | Whether you know its sender: your own address, a colleague at your work domain, someone you've written to, someone with a sender rule, or other mail from them (not the Lobby, Spam, Trash or this batch) | `read-envelopes` |
 | `storage-get(key)`, `storage-set(key, value)` | Your key-value store | `storage` |
-| `read-message(account, mailbox, id)` | The message's text, links (shown text and URL), headers and attachment names; fetched once per message. Only for messages `on-message-received` is handling | `read-bodies` |
+| `read-message(account, mailbox, id)` | The message's text, links (shown text and URL), headers and attachment names; fetched once per message. Only for the messages `on-message-received` is checking (in a sweep, those from the last 90 days) | `read-bodies` |
 | `message-text(account, mailbox, id)` | Just the text, as above | `read-bodies` |
 | `http-get(url)` | HTTPS GET | Not yet |
 
@@ -313,15 +348,21 @@ scripts/build-plugins.sh sweep && cargo test wasm_host
 - **"action(s) refused":** it returned an action it wasn't granted. Ask for the
   permission in the manifest, rebuild, then switch it off and on to grant it.
 - **Your `log` lines** show in the status bar and in Settings → Problems.
-- **"stopped and was switched off"** means it ran out of fuel or memory, or
-  panicked. A Rust panic is a trap.
+- **"ran out of time on one message and skipped it"**: one call used up its
+  fuel. Wax skips that message and carries on; five in a row and the plugin
+  is switched off. Cap work that grows with the message (links, text length).
+- **"stopped and was switched off"** means it ran out of fuel five times in a
+  row, ran out of memory, or panicked. A Rust panic is a trap.
 
 ## Versions
 
-The interface is versioned (`wax:plugin@0.4.0`) and still changing: a plugin
+The interface is versioned (`wax:plugin@0.5.0`) and still changing: a plugin
 built against one version won't load in a Wax built with another. When it
 changes, rebuild against the new `wit/plugin.wit`.
 
+- **v0.5** gave `on-message-received` a `check-reason` (`arrived`, `existing`,
+  `opened`, `not-spam`), added the `warn` action and the manifest's
+  `scan-existing`, so a plugin can check mail that's already there.
 - **v0.4** added `read-message` (text, links, headers, attachments) and made
   `message-text` work, both under `read-bodies`.
 - **v0.3** made commands run (keys, reader buttons, menus with choices and

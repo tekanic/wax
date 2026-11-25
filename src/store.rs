@@ -164,6 +164,14 @@ impl Store {
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN bcc_list TEXT", []).ok();
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN account TEXT", []).ok();
         conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS plugin_warnings (
+                 account TEXT NOT NULL, message_key TEXT NOT NULL, plugin TEXT NOT NULL, text TEXT NOT NULL,
+                 PRIMARY KEY (account, message_key, plugin));
+             CREATE TABLE IF NOT EXISTS plugin_checked (
+                 account TEXT NOT NULL, message_key TEXT NOT NULL, plugin TEXT NOT NULL, version TEXT NOT NULL,
+                 PRIMARY KEY (account, message_key, plugin));",
+        )?;
+        conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS reminders (
                  id INTEGER PRIMARY KEY, account TEXT NOT NULL, kind TEXT NOT NULL,
                  message_ids TEXT NOT NULL, thread TEXT, subject TEXT NOT NULL DEFAULT '',
@@ -858,6 +866,69 @@ impl Store {
         }
         Ok(())
     }
+
+    pub fn add_warning(&self, account: &str, key: &str, plugin: &str, text: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO plugin_warnings (account, message_key, plugin, text) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (account, message_key, plugin) DO UPDATE SET text = excluded.text",
+            params![account, key, plugin, text],
+        )?;
+        Ok(())
+    }
+
+    pub fn warnings(&self, account: &str, key: &str) -> Vec<String> {
+        let Ok(mut stmt) = self.conn.prepare("SELECT text FROM plugin_warnings WHERE account = ?1 AND message_key = ?2 ORDER BY plugin") else {
+            return Vec::new();
+        };
+        stmt.query_map(params![account, key], |r| r.get::<_, String>(0)).map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default()
+    }
+
+    pub fn mark_checked(&self, account: &str, keys: &[String], plugin: &str, version: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut up = tx.prepare(
+                "INSERT INTO plugin_checked (account, message_key, plugin, version) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (account, message_key, plugin) DO UPDATE SET version = excluded.version",
+            )?;
+            for k in keys {
+                up.execute(params![account, k, plugin, version])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn checked_by_all(&self, account: &str, key: &str, plugins: &[(String, String)]) -> bool {
+        plugins.iter().all(|(id, version)| {
+            self.conn
+                .query_row(
+                    "SELECT COUNT(*) FROM plugin_checked WHERE account = ?1 AND message_key = ?2 AND plugin = ?3 AND version = ?4",
+                    params![account, key, id, version],
+                    |r| r.get::<_, i64>(0),
+                )
+                .unwrap_or(0)
+                > 0
+        })
+    }
+
+    pub fn unchecked(&self, plugin: &str, version: &str) -> Result<Vec<Envelope>> {
+        let sql = format!(
+            "SELECT {ENVELOPE_COLUMNS} FROM envelopes e
+             LEFT JOIN bodies b ON b.account = e.account AND b.mailbox = e.mailbox AND b.id = e.id
+             WHERE e.mailbox NOT IN ('[Gmail]/Spam', '[Gmail]/Trash', '[Gmail]/Drafts')
+               AND NOT EXISTS (SELECT 1 FROM plugin_checked c WHERE c.account = e.account
+                   AND c.message_key = COALESCE(e.message_id, e.mailbox || '/' || e.id) AND c.plugin = ?1 AND c.version = ?2)
+             GROUP BY e.account, COALESCE(e.message_id, e.mailbox || '/' || e.id)
+             ORDER BY e.account, e.ts DESC"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![plugin, version], row_to_envelope)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+}
+
+pub fn message_key(e: &Envelope) -> String {
+    e.message_id.clone().unwrap_or_else(|| format!("{}/{}", e.mailbox, e.id))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -989,5 +1060,32 @@ mod thread_tests {
         let left = store.reminders_due(1000).unwrap();
         store.delete_reminder(left[0].id).unwrap();
         assert!(store.reminders_due(1000).unwrap().is_empty());
+    }
+
+    #[test]
+    fn warnings_and_checks() {
+        let mut store = scratch("checks");
+        let me = "me@x.com";
+        let mut a = envelope("INBOX", "1", "a@x.com");
+        a.message_id = Some("<a@x>".into());
+        let mut b = envelope("[Gmail]/All Mail", "9", "a@x.com");
+        b.message_id = Some("<a@x>".into());
+        let mut c = envelope("[Gmail]/Spam", "3", "s@x.com");
+        c.message_id = Some("<s@x>".into());
+        let d = envelope("INBOX", "4", "n@x.com");
+        store.upsert_envelopes(me, &[a.clone(), b, c, d.clone()]).unwrap();
+        let todo: Vec<String> = store.unchecked("phishing", "0.1").unwrap().iter().map(super::message_key).collect();
+        assert_eq!(todo.len(), 2, "{todo:?}");
+        assert!(todo.contains(&"<a@x>".to_string()) && todo.contains(&"<4@x>".to_string()));
+        store.mark_checked(me, &["<a@x>".into()], "phishing", "0.1").unwrap();
+        assert_eq!(store.unchecked("phishing", "0.1").unwrap().len(), 1);
+        assert_eq!(store.unchecked("phishing", "0.2").unwrap().len(), 2, "a new version checks again");
+        let plugins = vec![("phishing".to_string(), "0.1".to_string())];
+        assert!(store.checked_by_all(me, "<a@x>", &plugins));
+        assert!(!store.checked_by_all(me, &super::message_key(&d), &plugins));
+        store.add_warning(me, "<a@x>", "phishing", "Possible phishing: x").unwrap();
+        store.add_warning(me, "<a@x>", "phishing", "Possible phishing: y").unwrap();
+        assert_eq!(store.warnings(me, "<a@x>"), ["Possible phishing: y"]);
+        assert!(store.warnings(me, "<b@x>").is_empty());
     }
 }

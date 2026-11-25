@@ -211,6 +211,7 @@ pub fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: 
             A::MoveTo(_) | A::Archive => {}
             A::Notify(text) => notes.push(text.clone()),
             A::SnoozeUntil(_) | A::FollowUp(_) => notes.push("snooze and follow-up work from commands, not on new mail".into()),
+            A::Warn(_) => {}
             A::OpenDraft(_) => notes.push("opening drafts isn't available to plugins yet".into()),
             A::FileSender(_) => notes.push("file-sender works only from a sender view".into()),
         }
@@ -242,7 +243,7 @@ impl MailApp {
             batch: kept.iter().map(|e| (e.mailbox.clone(), e.id.clone())).collect(),
             batch_mids: kept.iter().filter_map(|e| e.message_id.clone()).collect(),
             sessions: Arc::new(Mutex::new(session.iter().map(|s| (account.to_string(), s.clone())).collect())),
-            contents: Default::default(),
+            ..Default::default()
         };
         let (store, acct) = (self.store.clone(), account.to_string());
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
@@ -271,10 +272,20 @@ impl MailApp {
                     let mut work = Vec::new();
                     let mut h = host.lock().unwrap();
                     h.arrival = arrival;
+                    let checkers = h.running_checkers();
+                    let mut warned = Vec::new();
                     for e in &inbox {
-                        let (acts, mut p) = h.arrived(&to_wit(&a, e));
+                        let (acts, mut p) = h.arrived(&to_wit(&a, e), wasm_host::CheckReason::Arrived);
                         problems.append(&mut p);
-                        let actions: Vec<wasm_host::Action> = acts.into_iter().flat_map(|(_, a)| a).collect();
+                        for (plugin, list) in &acts {
+                            for x in list {
+                                if let wasm_host::Action::Warn(t) = x {
+                                    warned.push((plugin.clone(), crate::store::message_key(e), t.clone()));
+                                }
+                            }
+                        }
+                        let actions: Vec<wasm_host::Action> =
+                            acts.into_iter().flat_map(|(_, a)| a).filter(|x| !matches!(x, wasm_host::Action::Warn(_))).collect();
                         if !actions.is_empty() {
                             work.push((e.mailbox.clone(), e.id.clone(), actions));
                         }
@@ -282,6 +293,15 @@ impl MailApp {
                     h.arrival = Default::default();
                     drop(h);
                     if let Some(store) = &st {
+                        let store_now = store.lock().unwrap();
+                        for (plugin, key, text) in &warned {
+                            store_now.add_warning(&a, key, plugin, text).ok();
+                        }
+                        let keys: Vec<String> = inbox.iter().map(crate::store::message_key).collect();
+                        for (id, version) in &checkers {
+                            store_now.mark_checked(&a, &keys, id, version).ok();
+                        }
+                        drop(store_now);
                         for (mailbox, id, actions) in &work {
                             if leaves_inbox(actions) {
                                 store.lock().unwrap().remove_envelope(&a, mailbox, id).ok();

@@ -133,9 +133,9 @@ a Filter rule) never flashes into the Inbox or sets off a notification.
 
 The plugins live in
 `~/.config/wax/plugins/<id>/plugin.wasm` (interface: `wit/plugin.wit`,
-`wax:plugin@0.4.0`). Each call runs on a fresh instance with no files, no
-network, 64 MB of memory and a fuel limit, so a plugin that loops or runs away
-is stopped and switched off. A new plugin starts off; Settings → Plugins shows
+`wax:plugin@0.5.0`). Each call runs on a fresh instance with no files, no
+network, 64 MB of memory and a fuel limit: a call that runs out of time is
+skipped, and a plugin that keeps doing it is switched off. A new plugin starts off; Settings → Plugins shows
 what it asks for and switches it on, which writes its `grants.toml`. Actions
 beyond what was granted are refused. Each plugin reads its own `config.toml`.
 
@@ -172,6 +172,9 @@ addresses, and program or web-page attachments. Its `config.toml` sets the label
 trusted domains and extra brands to protect. On 1,684 past messages from
 one-time senders it flagged 2, both reasonable; on 315 recent messages it flagged
 none of the Inbox and 32 of 135 in Spam (mostly forged senders).
+When it's switched on it sweeps the mail you already have (outside Spam and
+Trash), and it checks a message again when you open it or move it out of Spam,
+so a suspect message carries a ⚠ banner with the reasons wherever you read it.
 
 **Filter rules** (`plugins/filter-rules`) acts on new mail, one rule per line:
 

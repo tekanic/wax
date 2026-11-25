@@ -114,10 +114,14 @@ impl Guest for FilterRules {
             version: env!("CARGO_PKG_VERSION").into(),
             permissions: vec![Permission::ReadEnvelopes, Permission::ModifyMail],
             network_hosts: vec![],
+            scan_existing: false,
         }
     }
 
-    fn on_message_received(message: Envelope) -> Vec<Action> {
+    fn on_message_received(message: Envelope, reason: CheckReason) -> Vec<Action> {
+        if reason != CheckReason::Arrived {
+            return Vec::new();
+        }
         let addr = |a: &wax::plugin::types::Address| {
             let mut v = vec![a.email.clone()];
             if let Some(n) = &a.name {

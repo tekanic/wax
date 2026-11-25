@@ -32,6 +32,7 @@ mod model;
 mod oauth;
 mod plugins;
 mod plugins_pane;
+mod plugin_checks;
 mod wasm_host;
 mod problems;
 mod reminders;
@@ -391,6 +392,9 @@ struct MailApp {
     config_seen: config_watch::Seen,
     /// WebAssembly plugins (None until they've loaded).
     wasm: Option<Arc<Mutex<wasm_host::Host>>>,
+    warnings: std::collections::HashMap<(String, String), Vec<String>>,
+    opened_checks: std::collections::HashSet<(String, String)>,
+    scan: Option<plugin_checks::Scan>,
     /// App defaults (font, layout, default signatures).
     settings: settings::Settings,
     signatures: Vec<signature::Signature>,
@@ -477,6 +481,9 @@ impl MailApp {
             compose_subs: Vec::new(),
             autosave_gen: 0,
             saving_draft: false,
+            warnings: Default::default(),
+            opened_checks: Default::default(),
+            scan: None,
             plugin_commands: Vec::new(),
             command_menu: None,
             checking_reminders: false,
@@ -1961,11 +1968,23 @@ impl MailApp {
         }
         let store = self.store.clone();
         let accounts: Vec<String> = items.iter().map(|e| self.account_of(e).to_string()).collect();
+        let host = if kind == BulkKind::ToInbox { self.wasm.clone() } else { None };
+        let mine: std::collections::HashMap<String, Vec<String>> = sessions.keys().map(|a| (a.clone(), self.own_addresses(a))).collect();
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let work = items.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
+                    let mut warned: Vec<(String, String, String)> = Vec::new();
+                    let mut problems: Vec<String> = Vec::new();
+                    if let (Some(host), Some(store)) = (&host, &store) {
+                        for (account, session) in &sessions {
+                            let list: Vec<Envelope> = work.iter().zip(&accounts).filter(|(_, a)| *a == account).map(|(e, _)| e.clone()).collect();
+                            let out = MailApp::check_leaving_spam(host, store, session, account, &list, mine.get(account).cloned().unwrap_or_default());
+                            warned.extend(out.warned.into_iter().map(|(k, t)| (account.clone(), k, t)));
+                            problems.extend(out.problems);
+                        }
+                    }
                     let dest = kind.dest();
                     let mut by_box: std::collections::BTreeMap<(String, String), Vec<String>> = Default::default();
                     for (e, a) in work.iter().zip(&accounts) {
@@ -1989,10 +2008,23 @@ impl MailApp {
                             store.remove_envelopes(account, keys, kind == BulkKind::Delete)?;
                         }
                     }
-                    anyhow::Ok(())
+                    anyhow::Ok((warned, problems))
                 })
                 .await;
             this.update(cx, |this, cx| {
+                if let Ok((warned, problems)) = &result {
+                    for p in problems {
+                        errlog::record("", p);
+                    }
+                    for (account, key, text) in warned {
+                        this.warnings.entry((account.clone(), key.clone())).or_default().push(text.clone());
+                    }
+                    if !warned.is_empty() {
+                        this.status = format!("{} moved message(s) look suspicious; labelled and kept a warning", warned.len()).into();
+                        this.status_is_error = true;
+                        cx.notify();
+                    }
+                }
                 if let Err(err) = result {
                     this.restore_items(items, cx);
                     this.status = format!("Gmail refused the change; restored: {err:#}").into();
@@ -2277,6 +2309,9 @@ impl MailApp {
     }
 
     fn load_body(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if let Some(e) = self.envelopes.get(ix).cloned() {
+            self.check_opened(e, cx);
+        }
         let Some(envelope) = self.envelopes.get(ix) else { return };
         if envelope.body.is_some() {
             return;
@@ -3361,6 +3396,7 @@ impl MailApp {
                                 .line_height(rems(1.75))
                                 .child(e.subject.clone()),
                         )
+                        .children(self.render_warnings(e))
                         .child(
                             div()
                                 .flex()

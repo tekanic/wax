@@ -16,10 +16,11 @@ impl Guest for Phishing {
             version: env!("CARGO_PKG_VERSION").into(),
             permissions: vec![Permission::ReadEnvelopes, Permission::ReadBodies, Permission::ModifyMail],
             network_hosts: vec![],
+            scan_existing: true,
         }
     }
 
-    fn on_message_received(m: Envelope) -> Vec<Action> {
+    fn on_message_received(m: Envelope, _reason: CheckReason) -> Vec<Action> {
         let Some(from) = m.from.first() else { return Vec::new() };
         if knows_sender(&m) {
             return Vec::new();
@@ -45,9 +46,11 @@ impl Guest for Phishing {
             return Vec::new();
         }
         let who = if name.is_empty() { from.email.clone() } else { name };
+        let why = v.reasons.join("; ");
         vec![
             Action::AddLabel(settings.label.clone()),
-            Action::Notify(format!("Possible phishing from {who}: {}", v.reasons.join("; "))),
+            Action::Warn(format!("Possible phishing: {why}")),
+            Action::Notify(format!("Possible phishing from {who}: {why}")),
         ]
     }
 

@@ -301,6 +301,10 @@ fn is_ip(host: &str) -> bool {
     host.parse::<std::net::IpAddr>().is_ok()
 }
 
+const MAX_LINKS: usize = 300;
+const MAX_HOSTS: usize = 40;
+const MAX_TEXT: usize = 40_000;
+
 pub fn check_body(m: &Mail, b: &Body, contacts: &[Contact], settings: &Settings, subject_pressure: bool) -> Verdict {
     let mut v = Verdict { score: 0, reasons: Vec::new() };
     let mut add = |n: u32, why: String| {
@@ -332,16 +336,23 @@ pub fn check_body(m: &Mail, b: &Body, contacts: &[Contact], settings: &Settings,
         }
     }
     let brands = all_brands(settings);
-    let known: Vec<String> = contacts
+    let mut known: Vec<String> = contacts
         .iter()
         .map(|c| base(&domain(&c.email)))
         .filter(|d| !d.is_empty() && !PUBLIC.contains(&d.as_str()))
         .collect();
+    known.sort();
+    known.dedup();
+    let mut seen: Vec<String> = Vec::new();
     let protected = |d: &str| brands.iter().any(|(_, ds)| ds.iter().any(|x| belongs(d, x))) || known.iter().any(|k| belongs(d, k));
     let (mut mismatch, mut ip, mut look) = (false, false, false);
-    for (text, url) in b.links {
+    for (text, url) in b.links.iter().take(MAX_LINKS) {
         let Some(h) = host(url) else { continue };
         let hb = base(&h);
+        let fresh = !seen.contains(&h);
+        if fresh && seen.len() < MAX_HOSTS {
+            seen.push(h.clone());
+        }
         if !ip && is_ip(&h) {
             ip = true;
             add(2, format!("a link goes to a bare internet address ({h})"));
@@ -355,7 +366,7 @@ pub fn check_body(m: &Mail, b: &Body, contacts: &[Contact], settings: &Settings,
                 }
             }
         }
-        if !look && !is_ip(&h) {
+        if !look && fresh && seen.last() == Some(&h) && !is_ip(&h) {
             let like = brands.iter().find(|(_, ds)| !ds.iter().any(|d| belongs(&h, d)) && ds.iter().any(|d| lookalike(&hb, &base(d))));
             if let Some((brand, ds)) = like {
                 look = true;
@@ -373,7 +384,11 @@ pub fn check_body(m: &Mail, b: &Body, contacts: &[Contact], settings: &Settings,
         add(2, format!("it attaches a web page ({f})"));
     }
     if !subject_pressure {
-        let text = b.text.to_lowercase();
+        let mut end = b.text.len().min(MAX_TEXT);
+        while !b.text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let text = b.text[..end].to_lowercase();
         if let Some((phrase, _)) = PRESSURE.iter().filter(|(_, n)| *n >= 2).find(|(p, _)| text.contains(p)) {
             add(1, format!("the message pushes you to act (\u{201c}{phrase}\u{201d})"));
         }

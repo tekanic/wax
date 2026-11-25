@@ -1,4 +1,4 @@
-// Wax plugin interface, v0.4.
+// Wax plugin interface, v0.5.
 //
 // Implemented by the host: manifest, on-message-received, commands /
 // run-command, get-sender-view / on-sender-key, and the host functions
@@ -6,6 +6,10 @@
 // and message-text. panel is called later; plugins return none for now.
 // http-get answers "not available yet".
 //
+// v0.5: on-message-received says why it's called (check-reason): new mail,
+// opened, existing mail (a first sweep, for plugins with scan-existing),
+// or moved out of Spam. Only new mail may move or archive; the others may
+// add labels and warnings. The warn action shows a banner on the message.
 // v0.4: read-message (text, links, headers, attachment names) and
 // message-text work, for new mail, under read-bodies.
 // v0.3: commands run (menu of choices, typed text, reader buttons, keys),
@@ -22,7 +26,7 @@
 // - Everything a plugin may read arrives as arguments or through `host`,
 //   which is permission-checked too.
 
-package wax:plugin@0.4.0;
+package wax:plugin@0.5.0;
 
 interface types {
     record address {
@@ -63,6 +67,8 @@ interface types {
         follow-up(string),
         /// Show a transient message in the status bar.
         notify(string),
+        /// Show a warning banner above this message whenever it's read.
+        warn(string),
         /// Open the composer with a prefilled draft.
         open-draft(draft),
         /// File all of a sender's mail, past and future: the core writes a
@@ -210,11 +216,28 @@ interface types {
         attachments: list<string>,
     }
 
+    /// Why on-message-received is called.
+    enum check-reason {
+        /// New mail, before it's shown. Any action allowed.
+        arrived,
+        /// Opened in the reader without having been checked by this plugin
+        /// version. Labels and warnings only.
+        opened,
+        /// A sweep of mail already there (scan-existing). Labels and
+        /// warnings only; read-message only for the last 90 days.
+        existing,
+        /// About to be moved out of Spam. Labels and warnings only.
+        not-spam,
+    }
+
     record manifest {
         id: string,
         name: string,
         version: string,
         permissions: list<permission>,
+        /// Check existing mail when first switched on and after updates
+        /// (reason `existing`), and offer "Check existing mail" in Settings.
+        scan-existing: bool,
         /// Hosts allowed when `network` is granted, e.g. "api.example.com".
         network-hosts: list<string>,
     }
@@ -259,7 +282,7 @@ interface host {
 }
 
 world plugin {
-    use types.{envelope, action, command, panel, manifest, sender, sender-view};
+    use types.{envelope, action, command, panel, manifest, sender, sender-view, check-reason};
 
     import host;
 
@@ -269,7 +292,7 @@ world plugin {
     /// Called for each new Inbox message after sender rules, before it's
     /// shown or announced (needs `read-envelopes`). A message moved or
     /// archived here never appears in the Inbox.
-    export on-message-received: func(message: envelope) -> list<action>;
+    export on-message-received: func(message: envelope, reason: check-reason) -> list<action>;
 
     /// The plugin's commands. Called when the plugins load and again each
     /// time a command's menu opens, so choices can show current times.

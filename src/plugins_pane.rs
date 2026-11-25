@@ -27,6 +27,7 @@ impl MailApp {
                         }
                         this.wasm = Some(Arc::new(Mutex::new(h)));
                         this.refresh_commands(cx);
+                        this.scan_if_needed(cx);
                     }
                     Err(e) => {
                         this.status = format!("Plugins could not start: {e:#}").into();
@@ -59,6 +60,10 @@ impl MailApp {
                 self.status_is_error = true;
             }
         }
+        drop(host);
+        if on {
+            self.scan_if_needed(cx);
+        }
         cx.notify();
     }
 
@@ -76,7 +81,7 @@ impl MailApp {
             "Each plugin is a folder here holding plugin.wasm. Plugins run sandboxed: no files, no network, limited time and memory, and they only change mail in the ways you allow.",
             show,
         ));
-        let plugins: Vec<(String, String, String, bool, Option<String>, Vec<&'static str>, PathBuf)> = self
+        let plugins: Vec<(String, String, String, bool, Option<String>, Vec<&'static str>, PathBuf, bool)> = self
             .wasm
             .as_ref()
             .map(|h| {
@@ -86,7 +91,7 @@ impl MailApp {
                     .iter()
                     .map(|p| {
                         let version = p.manifest.as_ref().map(|m| m.version.clone()).unwrap_or_default();
-                        (p.id.clone(), p.name(), version, p.enabled, p.broken.clone(), p.requested().into_iter().map(permission_about).collect(), p.dir.clone())
+                        (p.id.clone(), p.name(), version, p.enabled, p.broken.clone(), p.requested().into_iter().map(permission_about).collect(), p.dir.clone(), p.running() && p.scans())
                     })
                     .collect()
             })
@@ -98,12 +103,19 @@ impl MailApp {
                 "No plugins yet. Put a plugin's folder in the plugins folder and it shows up here, switched off."
             }));
         }
-        for (id, name, version, enabled, broken, asks, dir) in plugins {
-            let (on_id, off_id) = (id.clone(), id.clone());
+        for (id, name, version, enabled, broken, asks, dir, scans) in plugins {
+            let (on_id, off_id, scan_id) = (id.clone(), id.clone(), id.clone());
+            let scanning = self.scan.as_ref().is_some_and(|s| s.plugin == id);
             let config = dir.join("config.toml");
             let toggle = div()
                 .flex()
                 .gap_1p5()
+                .when(scans, |d| {
+                    d.child(
+                        choice(SharedString::from(format!("plug-scan-{id}")), if scanning { "Checking…" } else { "Check existing mail" }, scanning)
+                            .on_click(cx.listener(move |this, _, _, cx| this.start_scan(&scan_id, cx))),
+                    )
+                })
                 .child(choice(SharedString::from(format!("plug-cfg-{id}")), "Edit config", false).on_click(cx.listener(move |_, _, _, _| {
                     if !config.exists() {
                         std::fs::write(&config, "# Settings for this plugin.\n").ok();

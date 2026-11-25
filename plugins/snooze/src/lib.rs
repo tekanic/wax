@@ -83,10 +83,11 @@ impl Guest for Snooze {
             version: env!("CARGO_PKG_VERSION").into(),
             permissions: vec![Permission::ReadEnvelopes, Permission::ModifyMail],
             network_hosts: vec![],
+            scan_existing: false,
         }
     }
 
-    fn on_message_received(_message: Envelope) -> Vec<Action> {
+    fn on_message_received(_message: Envelope, _reason: CheckReason) -> Vec<Action> {
         Vec::new()
     }
 
