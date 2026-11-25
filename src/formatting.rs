@@ -238,13 +238,13 @@ impl MailApp {
                 .items_center()
                 .rounded_md()
                 .text_sm()
-                .text_color(rgb(if preview { MUTED } else { SUBTLE }))
-                .when(!preview, |d| d.cursor_pointer().hover(|d| d.bg(rgb(0x30303a)).text_color(rgb(TEXT))))
+                .text_color(if preview { pal().muted } else { pal().subtle })
+                .when(!preview, |d| d.cursor_pointer().hover(|d| d.bg(pal().popover_hover).text_color(pal().text)))
                 .tooltip(move |window, cx| Tooltip::new(f.keys()).build(window, cx))
                 .on_click(cx.listener(move |this, _, window, cx| this.format(f, window, cx)))
                 .child(label)
         };
-        let sep = || div().w(px(1.)).h(px(16.)).mx_1().bg(rgb(BORDER));
+        let sep = || div().w(px(1.)).h(px(16.)).mx_1().bg(pal().border);
         div()
             .flex()
             .flex_none()
@@ -274,13 +274,13 @@ impl MailApp {
                     .text_xs()
                     .font_family(if mono { "Menlo" } else { "Helvetica" })
                     .cursor_pointer()
-                    .text_color(rgb(SUBTLE))
-                    .hover(|d| d.bg(rgb(0x30303a)).text_color(rgb(TEXT)))
+                    .text_color(pal().subtle)
+                    .hover(|d| d.bg(pal().popover_hover).text_color(pal().text))
                     .tooltip(|window, cx| Tooltip::new("Font for this message  ⌘⇧M").build(window, cx))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_mono(cx)))
                     .child(if mono { "Monospaced" } else { "Proportional" }),
             )
-            .child(div().text_xs().text_color(rgb(MUTED)).mr_2().child("Markdown"))
+            .child(div().text_xs().text_color(pal().muted).mr_2().child("Markdown"))
             .child(
                 div()
                     .id("fmt-preview")
@@ -292,8 +292,8 @@ impl MailApp {
                     .rounded_md()
                     .text_sm()
                     .cursor_pointer()
-                    .when(preview, |d| d.bg(rgb(ACCENT)).text_color(rgb(0xffffff)))
-                    .when(!preview, |d| d.text_color(rgb(SUBTLE)).hover(|d| d.bg(rgb(0x30303a)).text_color(rgb(TEXT))))
+                    .when(preview, |d| d.bg(pal().accent).text_color(pal().on_accent))
+                    .when(!preview, |d| d.text_color(pal().subtle).hover(|d| d.bg(pal().popover_hover).text_color(pal().text)))
                     .tooltip(|window, cx| Tooltip::new("⌘⇧P").build(window, cx))
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_preview(window, cx)))
                     .child(if preview { "Edit" } else { "Preview" }),
@@ -368,8 +368,8 @@ impl MailApp {
                 .text_xs()
                 .cursor_pointer()
                 .border_1()
-                .when(on, |d| d.bg(rgb(SELECTED)).border_color(rgb(ACCENT)).text_color(rgb(TEXT)))
-                .when(!on, |d| d.border_color(rgb(BORDER)).text_color(rgb(SUBTLE)).hover(|d| d.bg(rgb(HOVER))))
+                .when(on, |d| d.bg(pal().selected).border_color(pal().accent).text_color(pal().text))
+                .when(!on, |d| d.border_color(pal().border).text_color(pal().subtle).hover(|d| d.bg(pal().hover)))
                 .children(accent.map(|a| div().size(px(7.)).rounded_full().bg(rgb(a))))
                 .child(label)
         };
@@ -393,7 +393,7 @@ impl MailApp {
                 .id("sig-edit")
                 .ml_1()
                 .text_xs()
-                .text_color(rgb(ACCENT))
+                .text_color(pal().accent)
                 .cursor_pointer()
                 .hover(|d| d.underline())
                 .on_click(cx.listener(move |this, _, w, cx| {
@@ -423,10 +423,10 @@ impl MailApp {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(div().text_xs().text_color(rgb(MUTED)).child("Signature"))
+                    .child(div().text_xs().text_color(pal().muted).child("Signature"))
                     .child(pills)
                     .child(div().flex_1())
-                    .child(div().text_xs().text_color(rgb(MUTED)).font_family("Menlo").child("⌘⇧S")),
+                    .child(div().text_xs().text_color(pal().muted).font_family("Menlo").child("⌘⇧S")),
             )
             .children(card.map(|card| div().px_4().py_3().rounded_md().bg(rgb(0xffffff)).child(card)))
     }
@@ -496,8 +496,8 @@ impl MailApp {
                     .text_xs()
                     .cursor_pointer()
                     .border_1()
-                    .when(on, |d| d.bg(rgb(SELECTED)).border_color(rgb(ACCENT)).text_color(rgb(TEXT)))
-                    .when(!on, |d| d.border_color(rgb(BORDER)).text_color(rgb(SUBTLE)).hover(|d| d.bg(rgb(HOVER))))
+                    .when(on, |d| d.bg(pal().selected).border_color(pal().accent).text_color(pal().text))
+                    .when(!on, |d| d.border_color(pal().border).text_color(pal().subtle).hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, _, cx| this.set_sender(owner.clone(), from.clone(), cx)))
                     .child(who.email.clone()),
             );
@@ -508,7 +508,7 @@ impl MailApp {
                 .flex_none()
                 .items_center()
                 .gap_3()
-                .child(div().w(px(56.)).flex_none().text_xs().text_color(rgb(MUTED)).child("From"))
+                .child(div().w(px(56.)).flex_none().text_xs().text_color(pal().muted).child("From"))
                 .child(pills),
         )
     }

@@ -275,9 +275,9 @@ impl MailApp {
                     .rounded_md()
                     .text_sm()
                     .cursor_pointer()
-                    .text_color(rgb(if typed { ACCENT } else { TEXT }))
-                    .when(on, |d| d.bg(rgb(SELECTED)))
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .text_color(if typed { pal().accent } else { pal().text })
+                    .when(on, |d| d.bg(pal().selected))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, w, cx| {
                         if let Some(m) = &mut this.command_menu {
                             m.ix = i;
@@ -285,7 +285,7 @@ impl MailApp {
                         this.command_menu_accept(w, cx)
                     }))
                     .child(div().min_w_0().truncate().child(title))
-                    .child(div().flex_none().text_xs().text_color(rgb(MUTED)).child(detail)),
+                    .child(div().flex_none().text_xs().text_color(pal().muted).child(detail)),
             );
         }
         let n = m.targets.len();
@@ -298,24 +298,24 @@ impl MailApp {
                         .key_context("ChoiceMenu")
                         .w(px(LIST_WIDTH - 24.))
                         .rounded_lg()
-                        .bg(rgb(0x24242b))
+                        .bg(pal().popover)
                         .border_1()
-                        .border_color(rgb(0x3d3d47))
+                        .border_color(pal().border_strong)
                         .shadow_lg()
                         .flex()
                         .flex_col()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(div().px_3().pt_2().text_xs().text_color(rgb(MUTED)).child(what))
-                        .child(div().p_2().child(Input::new(&m.input).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER))))
+                        .child(div().px_3().pt_2().text_xs().text_color(pal().muted).child(what))
+                        .child(div().p_2().child(Input::new(&m.input).bg(pal().search_bg).border_color(pal().search_border)))
                         .child(list)
                         .child(
                             div()
                                 .px_3()
                                 .py_1p5()
                                 .border_t_1()
-                                .border_color(rgb(0x34343d))
+                                .border_color(pal().border)
                                 .text_xs()
-                                .text_color(rgb(MUTED))
+                                .text_color(pal().muted)
                                 .child("⏎ pick · esc close"),
                         ),
                 ),

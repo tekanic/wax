@@ -69,8 +69,8 @@ impl Render for DragChip {
             .px_3()
             .py_1p5()
             .rounded_md()
-            .bg(rgb(ACCENT))
-            .text_color(rgb(0xffffff))
+            .bg(pal().accent)
+            .text_color(pal().on_accent)
             .text_sm()
             .shadow_lg()
             .child(self.0.clone())
@@ -154,11 +154,11 @@ impl MailApp {
             .flex_col()
             .items_center()
             .justify_center()
-            .bg(rgb(LIST_BG))
+            .bg(pal().list_bg)
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .cursor_pointer()
-            .hover(|d| d.bg(rgb(HOVER)))
+            .hover(|d| d.bg(pal().hover))
             .tooltip(|window, cx| Tooltip::new("Show blocks").build(window, cx))
             .on_click(cx.listener(|this, _, _, cx| this.set_blocks_open(true, cx)))
             // The label drawing is 14.5 × 38.8 at 12 px; shown at ~17 px.
@@ -167,8 +167,8 @@ impl MailApp {
                     .path("icons/blocks-label.svg")
                     .w(px(20.3))
                     .h(px(54.3))
-                    .text_color(rgb(TEXT))
-                    .group_hover("blocks-ribbon", |s| s.text_color(rgb(ACCENT))),
+                    .text_color(pal().text)
+                    .group_hover("blocks-ribbon", |s| s.text_color(pal().accent)),
             )
     }
 
@@ -185,14 +185,14 @@ impl MailApp {
                     .py_2()
                     .rounded_md()
                     .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(0x1f1f25))
+                    .border_color(pal().border)
+                    .bg(pal().card)
                     .cursor_grab()
-                    .hover(|d| d.border_color(rgb(0x3d3d47)).bg(rgb(HOVER)))
+                    .hover(|d| d.border_color(pal().border_strong).bg(pal().hover))
                     .on_drag(BlockDrag(block), |d: &BlockDrag, _, _, cx| cx.new(|_| DragChip(d.0.name.clone().into())))
                     .on_click(cx.listener(move |this, _, w, cx| this.insert_block(&click, None, w, cx)))
-                    .child(div().text_sm().text_color(rgb(TEXT)).child(b.name.clone()))
-                    .child(div().text_xs().truncate().font_family("Menlo").text_color(rgb(MUTED)).child(first_line)),
+                    .child(div().text_sm().text_color(pal().text).child(b.name.clone()))
+                    .child(div().text_xs().truncate().font_family("Menlo").text_color(pal().muted).child(first_line)),
             );
         }
         div()
@@ -206,9 +206,9 @@ impl MailApp {
             .flex()
             .flex_col()
             .gap_3()
-            .bg(rgb(LIST_BG))
+            .bg(pal().list_bg)
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .child(
                 div()
                     .flex()
@@ -229,20 +229,20 @@ impl MailApp {
                                     .justify_center()
                                     .rounded_md()
                                     .cursor_pointer()
-                                    .hover(|d| d.bg(rgb(HOVER)))
+                                    .hover(|d| d.bg(pal().hover))
                                     .tooltip(|window, cx| Tooltip::new("Hide blocks").build(window, cx))
                                     .on_click(cx.listener(|this, _, _, cx| this.set_blocks_open(false, cx)))
-                                    .child(svg().path("icons/chevron-left.svg").size(px(16.)).text_color(rgb(SUBTLE))),
+                                    .child(svg().path("icons/chevron-left.svg").size(px(16.)).text_color(pal().subtle)),
                             ),
                     )
-                    .child(div().text_xs().text_color(rgb(MUTED)).child("Drag into the message, or click to add at the cursor.")),
+                    .child(div().text_xs().text_color(pal().muted).child("Drag into the message, or click to add at the cursor.")),
             )
             .child(list)
             .child(
                 div()
                     .id("blocks-folder")
                     .text_xs()
-                    .text_color(rgb(ACCENT))
+                    .text_color(pal().accent)
                     .cursor_pointer()
                     .hover(|d| d.underline())
                     .on_click(cx.listener(|this, _, _, cx| {

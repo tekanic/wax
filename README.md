@@ -191,7 +191,8 @@ picks up a saved change within two seconds; Settings → General → Show folder
 opens it.
 
 ```
-settings.toml                       font, list while writing
+settings.toml                       font, list while writing, theme
+themes/<name>.json                  Zed theme files (any number of themes each)
 keymap.toml                         every shortcut; defaults listed, commented out
 accounts/<email>/account.toml       sender name, sign-in, default signatures
 accounts/<email>/rules.toml         that account's sender rules: "address" = "keep" or a label
@@ -209,6 +210,34 @@ older versions move to `~/.config/wax` on first start.
 
 `gpui-mail --import-signature <file.html> <name>` brings in an HTML signature
 (e.g. from Thunderbird's `sig_file`), logos and links included.
+
+## Themes
+
+Wax uses Zed's theme format, so any Zed theme works unchanged. Built in: Wax
+Dark and Wax Light, plus Zed's One, Ayu and Gruvbox families (MIT licensed;
+see `assets/themes/*/LICENSE`). Settings → General picks a light theme, a dark
+theme, and whether to match the Mac, use light or use dark. Drop more themes
+into `~/.config/wax/themes/` (themes in `~/.config/zed/themes/` show up too).
+Saving a theme file restyles Wax within two seconds, so you can tune one
+while you look at it.
+
+Wax reads these Zed colors and works out anything a theme leaves out:
+
+| Zed key | In Wax |
+|---|---|
+| `editor.background` | Reading pane, compose |
+| `panel.background` | Sidebar |
+| `surface.background` | Message list |
+| `elevated_surface.background` | Menus and pickers |
+| `border.variant`, `border` | Dividers; inputs and menu edges |
+| `text`, `text.muted`, `text.placeholder` | Text, secondary text, timestamps and hints |
+| `text.accent` | Accent: unread dots, primary buttons, links |
+| `ghost_element.hover`, `ghost_element.selected` | List hover and selection |
+| `element.background`, `element.hover`, `element.active` | Search field, buttons, pressed buttons |
+| `error`, `warning` | Errors, delete confirmations, plugin warnings |
+
+Messages' HTML and signature previews keep a white page, since that's how
+they'll look to the people who get them.
 
 ## Keyboard
 

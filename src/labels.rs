@@ -264,7 +264,7 @@ impl MailApp {
         let n = p.targets.len();
         let mut list = div().id("label-rows").max_h(px(300.)).overflow_y_scroll().flex().flex_col().py_1();
         if rows.is_empty() {
-            list = list.child(div().px_3().py_2().text_sm().text_color(rgb(MUTED)).child("No labels yet: type a name to create one"));
+            list = list.child(div().px_3().py_2().text_sm().text_color(pal().muted).child("No labels yet: type a name to create one"));
         }
         for (i, row) in rows.iter().enumerate() {
             let on = i == ix;
@@ -284,9 +284,9 @@ impl MailApp {
                     .rounded_md()
                     .text_sm()
                     .cursor_pointer()
-                    .text_color(rgb(if create { ACCENT } else { TEXT }))
-                    .when(on, |d| d.bg(rgb(SELECTED)))
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .text_color(if create { pal().accent } else { pal().text })
+                    .when(on, |d| d.bg(pal().selected))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, ev: &ClickEvent, w, cx| {
                         if let Some(p) = &mut this.label_picker {
                             p.ix = i;
@@ -297,7 +297,7 @@ impl MailApp {
                         div()
                             .w(px(14.))
                             .flex_none()
-                            .text_color(rgb(ACCENT))
+                            .text_color(pal().accent)
                             .child(if mark { "✓" } else if create { "+" } else { "" }),
                     )
                     .child(div().flex_1().min_w_0().truncate().child(text)),
@@ -316,9 +316,9 @@ impl MailApp {
                         .key_context("LabelPicker")
                         .w(px(LIST_WIDTH - 24.))
                         .rounded_lg()
-                        .bg(rgb(0x24242b))
+                        .bg(pal().popover)
                         .border_1()
-                        .border_color(rgb(0x3d3d47))
+                        .border_color(pal().border_strong)
                         .shadow_lg()
                         .flex()
                         .flex_col()
@@ -328,19 +328,19 @@ impl MailApp {
                                 .px_3()
                                 .pt_2()
                                 .text_xs()
-                                .text_color(rgb(MUTED))
+                                .text_color(pal().muted)
                                 .child(format!("Label {n} message{}{who}", if n == 1 { "" } else { "s" })),
                         )
-                        .child(div().p_2().child(Input::new(&p.input).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER))))
+                        .child(div().p_2().child(Input::new(&p.input).bg(pal().search_bg).border_color(pal().search_border)))
                         .child(list)
                         .child(
                             div()
                                 .px_3()
                                 .py_1p5()
                                 .border_t_1()
-                                .border_color(rgb(0x34343d))
+                                .border_color(pal().border)
                                 .text_xs()
-                                .text_color(rgb(MUTED))
+                                .text_color(pal().muted)
                                 .child(if p.current.is_none() { "Checking current labels…" } else { "⏎ add or remove · ⇧⏎ label and archive · esc close" }),
                         ),
                 ),
@@ -568,7 +568,7 @@ impl MailApp {
                     .on_click(cx.listener(move |this, _, _, cx| this.load_labels_pane(email.clone(), cx))),
             );
         }
-        let mut list = div().flex().flex_col().border_1().border_color(rgb(BORDER)).rounded_md();
+        let mut list = div().flex().flex_col().border_1().border_color(pal().border).rounded_md();
         let renaming = pane.and_then(|p| p.renaming.as_ref());
         let confirm = pane.and_then(|p| p.confirm_delete.clone());
         for (i, label) in labels.iter().enumerate() {
@@ -583,9 +583,9 @@ impl MailApp {
                 .flex()
                 .items_center()
                 .gap_3()
-                .when(i > 0, |d| d.border_t_1().border_color(rgb(BORDER)))
+                .when(i > 0, |d| d.border_t_1().border_color(pal().border))
                 .child(div().w(px(16. * depth as f32)).flex_none())
-                .child(svg().path("icons/tag.svg").size(px(14.)).flex_none().text_color(rgb(MUTED)));
+                .child(svg().path("icons/tag.svg").size(px(14.)).flex_none().text_color(pal().muted));
             let row = match editing {
                 Some((_, input)) => row
                     .child(
@@ -593,7 +593,7 @@ impl MailApp {
                             .flex_1()
                             .key_context("LabelRename")
                             .on_action(cx.listener(|this, _: &LabelAccept, _, cx| this.finish_rename(cx)))
-                            .child(Input::new(input).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER))),
+                            .child(Input::new(input).bg(pal().search_bg).border_color(pal().search_border)),
                     )
                     .child(action_button("rename-save", "Save", true).on_click(cx.listener(|this, _, _, cx| this.finish_rename(cx))))
                     .child(action_button("rename-cancel", "Cancel", false).on_click(cx.listener(|this, _, _, cx| {
@@ -603,8 +603,8 @@ impl MailApp {
                         cx.notify()
                     }))),
                 None => row
-                    .child(div().flex_1().min_w_0().truncate().text_sm().text_color(rgb(TEXT)).child(display(label).to_string()))
-                    .when(protected, |d| d.child(div().text_xs().text_color(rgb(MUTED)).child("Used by the Sweep")))
+                    .child(div().flex_1().min_w_0().truncate().text_sm().text_color(pal().text).child(display(label).to_string()))
+                    .when(protected, |d| d.child(div().text_xs().text_color(pal().muted).child("Used by the Sweep")))
                     .when(!protected, |d| {
                         d.child(
                             action_button(SharedString::from(format!("rename-{i}")), "Rename", false)
@@ -623,7 +623,7 @@ impl MailApp {
             list = list.child(row);
         }
         if labels.is_empty() {
-            list = list.child(div().px_3().py_3().text_sm().text_color(rgb(MUTED)).child(
+            list = list.child(div().px_3().py_3().text_sm().text_color(pal().muted).child(
                 if pane.is_some_and(|p| p.loading) { "Reading labels…" } else { "No labels yet." },
             ));
         }
@@ -637,7 +637,7 @@ impl MailApp {
                         .w(px(360.))
                         .key_context("LabelRename")
                         .on_action(cx.listener(|this, _: &LabelAccept, _, cx| this.finish_new_label(cx)))
-                        .child(Input::new(input).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER))),
+                        .child(Input::new(input).bg(pal().search_bg).border_color(pal().search_border)),
                 )
                 .child(action_button("label-create", "Create", true).on_click(cx.listener(|this, _, _, cx| this.finish_new_label(cx))))
                 .into_any_element(),
@@ -658,13 +658,13 @@ impl MailApp {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(div().text_sm().text_color(rgb(SUBTLE)).child(
+                    .child(div().text_sm().text_color(pal().subtle).child(
                         "Each account's Gmail labels. Renaming a label renames the ones nested under it and updates sender rules; deleting one keeps its messages in All Mail. Press l on a message to label it.",
                     ))
                     .when(self.accounts.len() > 1, |d| d.child(accounts))
                     .child(new_row)
                     .child(list)
-                    .when(pane.is_some_and(|p| p.busy), |d| d.child(div().text_xs().text_color(rgb(MUTED)).child("Working…"))),
+                    .when(pane.is_some_and(|p| p.busy), |d| d.child(div().text_xs().text_color(pal().muted).child("Working…"))),
             )
     }
 }

@@ -109,8 +109,8 @@ fn dest_label(dest: &str) -> &str {
 }
 
 /// A rule's colour: the view key with the same label, if any.
-fn dest_color(keys: &[wasm_host::ViewKey], dest: &str) -> u32 {
-    keys.iter().find(|k| k.label.eq_ignore_ascii_case(dest_label(dest))).map(|k| k.color).unwrap_or(SUBTLE)
+fn dest_color(keys: &[wasm_host::ViewKey], dest: &str) -> Rgba {
+    keys.iter().find(|k| k.label.eq_ignore_ascii_case(dest_label(dest))).map(|k| rgb(k.color)).unwrap_or(pal().subtle)
 }
 
 fn to_wit(r: &SenderStat) -> wasm_host::Sender {
@@ -492,12 +492,12 @@ impl MailApp {
             .pt_4()
             .pb_3()
             .border_b_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .flex()
             .items_baseline()
             .justify_between()
             .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(sw.title.clone()))
-            .child(div().text_xs().text_color(rgb(MUTED)).child(if sw.loading {
+            .child(div().text_xs().text_color(pal().muted).child(if sw.loading {
                 "Ranking senders…".to_string()
             } else {
                 format!("{} senders · {} messages · {decided} decided", sw.rows.len(), total)
@@ -510,9 +510,9 @@ impl MailApp {
             .items_center()
             .gap_4()
             .text_xs()
-            .text_color(rgb(MUTED))
+            .text_color(pal().muted)
             .border_b_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .child(div().w(px(96.)).flex_none().child("DECISION"))
             .child(div().flex_1().min_w_0().child("SENDER"))
             .child(div().w(px(72.)).flex_none().text_right().child("MESSAGES"))
@@ -533,7 +533,7 @@ impl MailApp {
             .flex()
             .flex_col()
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .child(header)
             .child(columns)
             .child(div().flex_1().min_h_0().child(list));
@@ -552,7 +552,7 @@ impl MailApp {
             .min_w_0()
             .h_full()
             .flex()
-            .bg(rgb(LIST_BG))
+            .bg(pal().list_bg)
             .child(table)
             .child(self.render_sweep_side())
     }
@@ -570,12 +570,12 @@ impl MailApp {
                         .px_2()
                         .rounded_sm()
                         .text_xs()
-                        .text_color(rgb(dest_color(&sw.keys, dest)))
+                        .text_color(dest_color(&sw.keys, dest))
                         .border_1()
-                        .border_color(rgb(dest_color(&sw.keys, dest)))
+                        .border_color(dest_color(&sw.keys, dest))
                         .when(pending, |d| d.opacity(0.6))
                         .child(dest_label(dest).to_string()),
-                    None => div().text_xs().text_color(rgb(MUTED)).child("—"),
+                    None => div().text_xs().text_color(pal().muted).child("—"),
                 };
                 div()
                     .id(("sweep", ix))
@@ -586,9 +586,9 @@ impl MailApp {
                     .items_center()
                     .gap_4()
                     .border_b_1()
-                    .border_color(rgb(BORDER))
-                    .when(selected, |d| d.bg(rgb(SELECTED)))
-                    .when(!selected, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .border_color(pal().border)
+                    .when(selected, |d| d.bg(pal().selected))
+                    .when(!selected, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(sw) = &mut this.sweep {
                             sw.selected = ix;
@@ -603,8 +603,8 @@ impl MailApp {
                             .min_w_0()
                             .flex()
                             .flex_col()
-                            .child(div().truncate().text_sm().text_color(rgb(TEXT)).child(display_name(&r.name, &r.email)))
-                            .child(div().truncate().text_xs().text_color(rgb(MUTED)).child(r.email.clone())),
+                            .child(div().truncate().text_sm().text_color(pal().text).child(display_name(&r.name, &r.email)))
+                            .child(div().truncate().text_xs().text_color(pal().muted).child(r.email.clone())),
                     )
                     .child(div().w(px(72.)).flex_none().text_right().text_sm().child(r.count.to_string()))
                     .child(
@@ -613,7 +613,7 @@ impl MailApp {
                             .flex_none()
                             .text_right()
                             .text_sm()
-                            .text_color(rgb(if pct >= 80 { 0xf87171 } else if pct >= 40 { 0xc9a227 } else { SUBTLE }))
+                            .text_color(if pct >= 80 { pal().error } else if pct >= 40 { pal().warning } else { pal().subtle })
                             .child(format!("{pct}%")),
                     )
                     .child(
@@ -622,7 +622,7 @@ impl MailApp {
                             .flex_none()
                             .text_right()
                             .text_xs()
-                            .text_color(rgb(MUTED))
+                            .text_color(pal().muted)
                             .child(model::display_date(r.last_ts)),
                     )
             })
@@ -640,7 +640,7 @@ impl MailApp {
             .flex()
             .flex_col()
             .gap_4()
-            .bg(rgb(BG))
+            .bg(pal().bg)
             .children(row.map(|r| {
                 let pct = if r.count == 0 { 0 } else { r.unread * 100 / r.count };
                 div()
@@ -648,16 +648,16 @@ impl MailApp {
                     .flex_col()
                     .gap_1()
                     .child(div().text_base().font_weight(FontWeight::SEMIBOLD).child(display_name(&r.name, &r.email)))
-                    .child(div().text_xs().text_color(rgb(MUTED)).child(r.email.clone()))
+                    .child(div().text_xs().text_color(pal().muted).child(r.email.clone()))
                     .child(
                         div()
                             .pt_1()
                             .text_xs()
-                            .text_color(rgb(SUBTLE))
+                            .text_color(pal().subtle)
                             .child(format!("{} messages · {pct}% never opened", r.count)),
                     )
             }))
-            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(MUTED)).child("RECENT"))
+            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(pal().muted).child("RECENT"))
             .child(
                 div()
                     .flex()
@@ -669,12 +669,12 @@ impl MailApp {
                             .justify_between()
                             .gap_3()
                             .text_xs()
-                            .child(div().truncate().text_color(rgb(TEXT)).child(subject.clone()))
-                            .child(div().flex_none().text_color(rgb(MUTED)).child(model::display_date(*ts)))
+                            .child(div().truncate().text_color(pal().text).child(subject.clone()))
+                            .child(div().flex_none().text_color(pal().muted).child(model::display_date(*ts)))
                     })),
             )
             .child(div().flex_1())
-            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(MUTED)).child("FILE ALL THEIR MAIL"))
+            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(pal().muted).child("FILE ALL THEIR MAIL"))
             .children(sw.keys.iter().map(|k| {
                 div()
                     .flex()
@@ -683,7 +683,7 @@ impl MailApp {
                     .text_xs()
                     .child(hint_chip(k.key.clone(), ""))
                     .child(div().text_color(rgb(k.color)).child(k.label.clone()))
-                    .child(div().text_color(rgb(MUTED)).child(k.about.clone()))
+                    .child(div().text_color(pal().muted).child(k.about.clone()))
             }))
     }
 }

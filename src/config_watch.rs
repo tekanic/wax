@@ -17,6 +17,7 @@ pub struct Seen {
     others: Vec<(String, SystemTime)>,
     /// plugin.wasm and grants.toml in each plugin folder.
     plugins: Vec<(String, SystemTime)>,
+    themes: Vec<(String, SystemTime)>,
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
@@ -56,7 +57,11 @@ pub fn look() -> Seen {
         }
     }
     plugins.sort();
-    Seen { keymap: modified(&keys::keymap_file()), settings: modified(&files::settings_file()), others, plugins }
+    let themes = crate::theme::theme_files()
+        .into_iter()
+        .filter_map(|p| modified(&p).map(|t| (p.to_string_lossy().into_owned(), t)))
+        .collect();
+    Seen { keymap: modified(&keys::keymap_file()), settings: modified(&files::settings_file()), others, plugins, themes }
 }
 
 impl MailApp {
@@ -89,9 +94,21 @@ impl MailApp {
         if before.plugins != now.plugins {
             self.reload_plugins(cx);
         }
+        if before.themes != now.themes {
+            let problems = crate::theme::reload();
+            for p in &problems {
+                crate::errlog::record("", p);
+            }
+            if let Some(p) = problems.first() {
+                self.status = p.clone().into();
+                self.status_is_error = true;
+            }
+            self.use_theme(false, cx);
+        }
         if before.settings != now.settings {
             self.settings = crate::settings::Settings::load();
             self.use_account_settings();
+            self.use_theme(false, cx);
         }
         if before.others != now.others {
             self.accounts = accounts::load();

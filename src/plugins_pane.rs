@@ -97,7 +97,7 @@ impl MailApp {
             })
             .unwrap_or_default();
         if plugins.is_empty() {
-            list = list.child(div().pt_4().text_sm().text_color(rgb(MUTED)).child(if self.wasm.is_none() {
+            list = list.child(div().pt_4().text_sm().text_color(pal().muted).child(if self.wasm.is_none() {
                 "Loading plugins…"
             } else {
                 "No plugins yet. Put a plugin's folder in the plugins folder and it shows up here, switched off."
@@ -125,18 +125,18 @@ impl MailApp {
                 .child(choice(SharedString::from(format!("plug-on-{id}")), "On", enabled).on_click(cx.listener(move |this, _, _, cx| this.set_plugin_enabled(&on_id, true, cx))))
                 .child(choice(SharedString::from(format!("plug-off-{id}")), "Off", !enabled).on_click(cx.listener(move |this, _, _, cx| this.set_plugin_enabled(&off_id, false, cx))));
             let mut about = div().flex().flex_col().gap_1().min_w_0().child(
-                div().flex().items_baseline().gap_2().child(div().text_sm().text_color(rgb(TEXT)).child(name)).child(div().text_xs().text_color(rgb(MUTED)).child(format!("{id} {version}"))),
+                div().flex().items_baseline().gap_2().child(div().text_sm().text_color(pal().text).child(name)).child(div().text_xs().text_color(pal().muted).child(format!("{id} {version}"))),
             );
-            about = about.child(div().text_xs().text_color(rgb(SUBTLE)).child(if asks.is_empty() {
+            about = about.child(div().text_xs().text_color(pal().subtle).child(if asks.is_empty() {
                 "Asks for nothing".to_string()
             } else {
                 format!("Asks to: {}", asks.join("; "))
             }));
             if let Some(why) = broken {
-                about = about.child(div().text_xs().text_color(rgb(0xe06c75)).child(format!("Not running: {why}")));
+                about = about.child(div().text_xs().text_color(pal().error).child(format!("Not running: {why}")));
             }
             list = list.child(
-                div().flex().items_center().justify_between().gap_8().py_4().border_b_1().border_color(rgb(BORDER)).child(about).child(toggle),
+                div().flex().items_center().justify_between().gap_8().py_4().border_b_1().border_color(pal().border).child(about).child(toggle),
             );
         }
         div().id("plugins-pane").size_full().overflow_y_scroll().px_8().py_4().child(list)

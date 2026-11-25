@@ -42,10 +42,12 @@ mod settings;
 mod signature;
 mod sweep;
 mod table;
+mod theme;
 mod threads;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use theme::pal;
 use html_view::HtmlView;
 use mail::Session;
 use compose::{Draft, Kind};
@@ -75,20 +77,6 @@ const SIDEBAR_WIDTH: f32 = 210.;
 const LIST_WIDTH: f32 = 360.;
 
 // Palette (spike only; Phase 1 moves to the gpui-component theme).
-const BG: u32 = 0x1b1b1f;
-const SIDEBAR: u32 = 0x151518;
-const LIST_BG: u32 = 0x18181c;
-const BORDER: u32 = 0x2a2a31;
-const HOVER: u32 = 0x23232a;
-const TEXT: u32 = 0xe8e8ec;
-const SUBTLE: u32 = 0xb4b4bd;
-const MUTED: u32 = 0x82828d;
-const ACCENT: u32 = 0x4f8ff7;
-const SELECTED: u32 = 0x1f2a40;
-const MARKED: u32 = 0x1a2233;
-const ERROR: u32 = 0xf87171;
-const SEARCH_BG: u32 = 0x26262e;
-const SEARCH_BORDER: u32 = 0x3a3a44;
 
 /// Icon (and optional tint) for a folder in the sidebar.
 fn folder_icon(name: &str, system: bool) -> (&'static str, Option<u32>) {
@@ -124,14 +112,14 @@ fn hint_chip(keys: impl Into<SharedString>, label: impl Into<SharedString>) -> i
             div()
                 .px_1p5()
                 .rounded_sm()
-                .bg(rgb(0x2c2c35))
+                .bg(pal().popover)
                 .border_1()
-                .border_color(rgb(0x41414c))
-                .text_color(rgb(TEXT))
+                .border_color(pal().border_strong)
+                .text_color(pal().text)
                 .font_family("Menlo")
                 .child(keys),
         )
-        .child(div().text_color(rgb(SUBTLE)).child(label))
+        .child(div().text_color(pal().subtle).child(label))
 }
 
 fn store_upsert(store: &Store, account: &str, list: &[Envelope]) -> anyhow::Result<()> {
@@ -282,8 +270,8 @@ fn action_button(id: impl Into<ElementId>, label: impl Into<SharedString>, prima
         .rounded_md()
         .text_sm()
         .cursor_pointer()
-        .when(primary, |d| d.bg(rgb(ACCENT)).text_color(rgb(0xffffff)).hover(|d| d.bg(rgb(0x6aa1f9))))
-        .when(!primary, |d| d.bg(rgb(0x3a3a44)).text_color(rgb(TEXT)).hover(|d| d.bg(rgb(0x55555f))))
+        .when(primary, |d| d.bg(pal().accent).text_color(pal().on_accent).hover(|d| d.bg(pal().accent_hover)))
+        .when(!primary, |d| d.bg(pal().button).text_color(pal().text).hover(|d| d.bg(pal().button_hover)))
         .child(label.into())
 }
 
@@ -434,6 +422,10 @@ impl MailApp {
         });
 
         let pending = cx.observe_pending_input(window, |_, _, cx| cx.notify());
+        let appearance = cx.observe_window_appearance(window, |this: &mut Self, _, cx| {
+            this.use_theme(false, cx);
+            cx.notify();
+        });
         let store = Store::open().ok().map(|s| Arc::new(Mutex::new(s)));
         let mut app = Self {
             account: "".into(),
@@ -511,7 +503,7 @@ impl MailApp {
             row_menu: None,
             swipe: None,
             swipe_quiet_until: std::time::Instant::now(),
-            _subscriptions: vec![subscription, pending],
+            _subscriptions: vec![subscription, pending, appearance],
         };
         if let Some(store) = &app.store {
             let moved = files::migrate_from_db(&store.lock().unwrap());
@@ -520,6 +512,10 @@ impl MailApp {
             }
         }
         app.settings = settings::Settings::load();
+        for p in theme::reload() {
+            errlog::record("", &p);
+        }
+        app.use_theme(true, cx);
         let cached = app.store.as_ref().map(|s| s.lock().unwrap().cached_accounts()).unwrap_or_default();
         accounts::migrate(&app.settings, &cached);
         app.accounts = accounts::load();
@@ -1422,7 +1418,7 @@ impl MailApp {
             .px_4()
             .py_2()
             .rounded_lg()
-            .bg(rgb(0x121216))
+            .bg(pal().sunken)
             .border_1()
             .border_color(rgb(if sent { 0x34d058 } else { 0x3d3d47 }))
             .flex()
@@ -1430,7 +1426,7 @@ impl MailApp {
             .gap_4()
             .child(lamps)
             .when(!caption.is_empty(), |d| {
-                d.child(div().flex_none().text_xs().font_family("Menlo").text_color(rgb(MUTED)).child(caption.to_uppercase()))
+                d.child(div().flex_none().text_xs().font_family("Menlo").text_color(pal().muted).child(caption.to_uppercase()))
             })
             .child(number)
             .child(div().flex_1())
@@ -1450,8 +1446,8 @@ impl MailApp {
                 .flex()
                 .gap_3()
                 .text_sm()
-                .child(div().w(px(56.)).flex_none().text_xs().text_color(rgb(MUTED)).pt(px(2.)).child(label))
-                .child(div().flex_1().min_w_0().text_color(rgb(TEXT)).child(value))
+                .child(div().w(px(56.)).flex_none().text_xs().text_color(pal().muted).pt(px(2.)).child(label))
+                .child(div().flex_1().min_w_0().text_color(pal().text).child(value))
         };
         let subject = if draft.subject.trim().is_empty() { "(no subject)".to_string() } else { draft.subject.clone() };
         div()
@@ -1615,20 +1611,20 @@ impl MailApp {
                 .flex_none()
                 .items_center()
                 .gap_3()
-                .child(div().w(px(56.)).flex_none().text_xs().text_color(rgb(MUTED)).child(label))
+                .child(div().w(px(56.)).flex_none().text_xs().text_color(pal().muted).child(label))
                 .child(div().flex_1().min_w_0().child(input))
         };
         let line = |e: &Entity<InputState>| {
             Input::new(e)
-                .bg(rgb(SEARCH_BG))
-                .border_color(rgb(SEARCH_BORDER))
-                .text_color(rgb(0xffffff))
+                .bg(pal().search_bg)
+                .border_color(pal().search_border)
+                .text_color(pal().text)
                 .into_any_element()
         };
         div()
             .key_context("Composer")
             // Files dragged in from Finder are attached.
-            .drag_over::<ExternalPaths>(|s, _, _, _| s.bg(rgb(0x1d2333)))
+            .drag_over::<ExternalPaths>(|s, _, _, _| s.bg(pal().selected))
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.add_attachments(paths.paths().to_vec(), cx)))
             .flex_1()
             .min_w_0()
@@ -1673,8 +1669,8 @@ impl MailApp {
                     .px_3()
                     .py_2()
                     .rounded_md()
-                    .bg(rgb(0x3b1f22))
-                    .text_color(rgb(ERROR))
+                    .bg(pal().error_bg)
+                    .text_color(pal().error)
                     .text_sm()
                     .child(e)
             }))
@@ -1688,9 +1684,9 @@ impl MailApp {
                             .id("show-bcc")
                             .flex_none()
                             .text_xs()
-                            .text_color(rgb(SUBTLE))
+                            .text_color(pal().subtle)
                             .cursor_pointer()
-                            .hover(|d| d.text_color(rgb(TEXT)))
+                            .hover(|d| d.text_color(pal().text))
                             .tooltip(|window, cx| Tooltip::new("Add Bcc  ⌘⇧B").build(window, cx))
                             .on_click(cx.listener(|this, _, w, cx| this.show_bcc(w, cx)))
                             .child("Bcc"),
@@ -1709,9 +1705,9 @@ impl MailApp {
                             .items_center()
                             .justify_center()
                             .rounded_sm()
-                            .text_color(rgb(SUBTLE))
+                            .text_color(pal().subtle)
                             .cursor_pointer()
-                            .hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT)))
+                            .hover(|d| d.bg(pal().hover).text_color(pal().text))
                             .tooltip(|window, cx| Tooltip::new("Remove Bcc  ⌘⇧B").build(window, cx))
                             .on_click(cx.listener(|this, _, w, cx| this.hide_bcc(w, cx)))
                             .child("×"),
@@ -1730,7 +1726,7 @@ impl MailApp {
                     .rounded_md()
                     .overflow_hidden()
                     .border_1()
-                    .border_color(rgb(SEARCH_BORDER))
+                    .border_color(pal().search_border)
                     .child(self.html_view.placeholder())
                     .into_any_element()
             } else {
@@ -1740,14 +1736,14 @@ impl MailApp {
                     .flex_1()
                     .min_h_0()
                     .rounded_md()
-                    .drag_over::<blocks::BlockDrag>(|s, _, _, _| s.border_2().border_color(rgb(ACCENT)))
+                    .drag_over::<blocks::BlockDrag>(|s, _, _, _| s.border_2().border_color(pal().accent))
                     .on_drop(cx.listener(|this, d: &blocks::BlockDrag, w, cx| this.drop_block(d, w, cx)))
                     .child(
                     Textarea::new(&c.body)
                         .h_full()
-                        .bg(rgb(SEARCH_BG))
-                        .border_color(rgb(SEARCH_BORDER))
-                        .text_color(rgb(TEXT))
+                        .bg(pal().search_bg)
+                        .border_color(pal().search_border)
+                        .text_color(pal().text)
                         .when(c.mono, |t| t.font_family("Menlo")),
                 )
                 .into_any_element()
@@ -1768,9 +1764,9 @@ impl MailApp {
                 .flex_col()
                 .py_1()
                 .rounded_md()
-                .bg(rgb(0x24242b))
+                .bg(pal().popover)
                 .border_1()
-                .border_color(rgb(0x3d3d47))
+                .border_color(pal().border_strong)
                 .children(c.suggestions.iter().enumerate().map(|(ix, (name, email))| {
                     let active = ix == c.suggest_ix;
                     div()
@@ -1781,8 +1777,8 @@ impl MailApp {
                         .items_baseline()
                         .gap_2()
                         .cursor_pointer()
-                        .when(active, |d| d.bg(rgb(SELECTED)))
-                        .hover(|d| d.bg(rgb(HOVER)))
+                        .when(active, |d| d.bg(pal().selected))
+                        .hover(|d| d.bg(pal().hover))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             if let Some(c) = &mut this.composer {
                                 c.suggest_ix = ix;
@@ -1791,9 +1787,9 @@ impl MailApp {
                             }
                         }))
                         .when(!name.is_empty(), |d| {
-                            d.child(div().text_sm().text_color(rgb(TEXT)).child(name.clone()))
+                            d.child(div().text_sm().text_color(pal().text).child(name.clone()))
                         })
-                        .child(div().text_xs().text_color(rgb(MUTED)).child(email.clone()))
+                        .child(div().text_xs().text_color(pal().muted).child(email.clone()))
                 })),
         )
     }
@@ -2653,20 +2649,20 @@ impl MailApp {
             if unseen > 0 {
                 row = row.child(
                     div()
-                        .text_color(rgb(if active { ACCENT } else { SUBTLE }))
+                        .text_color(if active { pal().accent } else { pal().subtle })
                         .font_weight(FontWeight::MEDIUM)
                         .child(group_digits(unseen)),
                 );
                 if total.is_some() {
-                    row = row.child(div().text_color(rgb(MUTED)).child("/"));
+                    row = row.child(div().text_color(pal().muted).child("/"));
                 }
             }
             if let Some(total) = total {
-                row = row.child(div().text_color(rgb(MUTED)).child(group_digits(total)));
+                row = row.child(div().text_color(pal().muted).child(group_digits(total)));
             }
             row
         });
-        let text = if active { TEXT } else if quiet || !item.exists { MUTED } else { SUBTLE };
+        let text = if active { pal().text } else if quiet || !item.exists { pal().muted } else { pal().subtle };
         div()
             .id(("mailbox", ix))
             .flex()
@@ -2676,9 +2672,9 @@ impl MailApp {
             .h(px(30.))
             .px(px(10.))
             .rounded(px(6.))
-            .text_color(rgb(text))
-            .when(active, |d| d.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM))
-            .when(!active, |d| d.hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+            .text_color(text)
+            .when(active, |d| d.bg(pal().selected).font_weight(FontWeight::MEDIUM))
+            .when(!active, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
             .on_click(cx.listener(move |this, _, window, cx| {
                 if !this.query.is_empty() {
                     this.search.update(cx, |s, cx| s.set_value("", window, cx));
@@ -2691,7 +2687,7 @@ impl MailApp {
                     .path(icon)
                     .size(px(16.))
                     .flex_none()
-                    .text_color(rgb(if active { tint.unwrap_or(ACCENT) } else { tint.unwrap_or(MUTED) }))
+                    .text_color(if active { tint.map(rgb).unwrap_or(pal().accent) } else { tint.map(rgb).unwrap_or(pal().muted) })
                     .when(!item.exists, |d| d.opacity(0.5)),
             )
             .child(div().flex_1().min_w_0().truncate().child(item.label.clone()))
@@ -2741,7 +2737,7 @@ impl MailApp {
                         .px(px(10.))
                         .pb(px(4.))
                         .text_xs()
-                        .text_color(rgb(MUTED))
+                        .text_color(pal().muted)
                         .child("Labels"),
                 );
             }
@@ -2758,7 +2754,7 @@ impl MailApp {
                     .px(px(10.))
                     .pb(px(6.))
                     .text_xs()
-                    .text_color(rgb(MUTED))
+                    .text_color(pal().muted)
                     .truncate()
                     .child(format!("Folders · {}", a.short())),
             );
@@ -2778,14 +2774,14 @@ impl MailApp {
             .px(px(10.))
             .rounded(px(6.))
             .border_1()
-            .border_color(rgb(if sweeping { ACCENT } else { BORDER }))
-            .text_color(rgb(if sweeping { TEXT } else { SUBTLE }))
-            .when(sweeping, |d| d.bg(rgb(SELECTED)))
-            .when(!sweeping, |d| d.hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+            .border_color(if sweeping { pal().accent } else { pal().border })
+            .text_color(if sweeping { pal().text } else { pal().subtle })
+            .when(sweeping, |d| d.bg(pal().selected))
+            .when(!sweeping, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
             .on_click(cx.listener(|this, _, w, cx| this.open_sweep(w, cx)))
-            .child(svg().path("icons/wand-sparkles.svg").size(px(16.)).flex_none().text_color(rgb(ACCENT)))
+            .child(svg().path("icons/wand-sparkles.svg").size(px(16.)).flex_none().text_color(pal().accent))
             .child(div().flex_1().child("Sweep"))
-            .child(div().flex_none().text_xs().font_family("Menlo").text_color(rgb(MUTED)).child("g w"));
+            .child(div().flex_none().text_xs().font_family("Menlo").text_color(pal().muted).child("g w"));
         div()
             .w(px(SIDEBAR_WIDTH))
             .flex_none()
@@ -2793,9 +2789,9 @@ impl MailApp {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .bg(rgb(SIDEBAR))
+            .bg(pal().sidebar)
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .text_sm()
             .child(accounts_box)
             .child(list)
@@ -2817,12 +2813,12 @@ impl MailApp {
                             .justify_center()
                             .rounded(px(6.))
                             .border_1()
-                            .border_color(rgb(if self.settings_view.is_some() { ACCENT } else { BORDER }))
-                            .text_color(rgb(SUBTLE))
-                            .hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT)))
+                            .border_color(if self.settings_view.is_some() { pal().accent } else { pal().border })
+                            .text_color(pal().subtle)
+                            .hover(|d| d.bg(pal().hover).text_color(pal().text))
                             .tooltip(|window, cx| Tooltip::new("Settings  ⌘,").build(window, cx))
                             .on_click(cx.listener(|this, _, w, cx| this.open_settings(settings::Pane::Writing, w, cx)))
-                            .child(svg().path("icons/sliders-horizontal.svg").size(px(16.)).text_color(rgb(SUBTLE))),
+                            .child(svg().path("icons/sliders-horizontal.svg").size(px(16.)).text_color(pal().subtle)),
                     ),
             )
     }
@@ -2849,12 +2845,12 @@ impl MailApp {
                 let left = p.deadline.saturating_duration_since(std::time::Instant::now()).as_secs() + 1;
                 div()
                     .truncate()
-                    .text_color(rgb(ACCENT))
+                    .text_color(pal().accent)
                     .child(format!("Sending in {}s · ⌘Z to undo", left.min(UNDO_SEND_SECS)))
             }
             None if self.sweep_status().is_some() => div()
                 .truncate()
-                .text_color(rgb(ACCENT))
+                .text_color(pal().accent)
                 .child(self.sweep_status().unwrap_or_default()),
             None => match self.pending_bulk.last() {
                 Some(b) => {
@@ -2863,7 +2859,7 @@ impl MailApp {
                     let verb = b.kind.done();
                     div()
                         .truncate()
-                        .text_color(rgb(ACCENT))
+                        .text_color(pal().accent)
                         .child(format!(
                             "{verb} {n} message{} · ⌘Z to undo ({}s)",
                             if n == 1 { "" } else { "s" },
@@ -2871,11 +2867,11 @@ impl MailApp {
                         ))
                 }
                 None if self.status.is_empty() && !self.online && !self.loading && !self.accounts.is_empty() => {
-                    div().truncate().text_color(rgb(MUTED)).child("Offline: showing saved mail")
+                    div().truncate().text_color(pal().muted).child("Offline: showing saved mail")
                 }
                 None => div()
                     .truncate()
-                    .text_color(rgb(if self.status_is_error { ERROR } else { MUTED }))
+                    .text_color(if self.status_is_error { pal().error } else { pal().muted })
                     .child(self.status.clone()),
             },
         };
@@ -2888,9 +2884,9 @@ impl MailApp {
             .items_center()
             .justify_between()
             .gap_6()
-            .bg(rgb(SIDEBAR))
+            .bg(pal().sidebar)
             .border_t_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .text_xs()
             .child(
                 // Least useful hints are last, so a narrow window drops them.
@@ -2915,7 +2911,7 @@ impl MailApp {
                     .children(
                         self.sync_note
                             .clone()
-                            .map(|n| div().flex_none().text_color(rgb(MUTED)).child(n)),
+                            .map(|n| div().flex_none().text_color(pal().muted).child(n)),
                     )
                     .when(problems > 0, |d| {
                         d.child(
@@ -2924,10 +2920,10 @@ impl MailApp {
                                 .flex_none()
                                 .px_1p5()
                                 .rounded_sm()
-                                .bg(rgb(0x3b1f22))
-                                .text_color(rgb(ERROR))
+                                .bg(pal().error_bg)
+                                .text_color(pal().error)
                                 .cursor_pointer()
-                                .hover(|d| d.bg(rgb(0x4a2529)))
+                                .hover(|d| d.bg(pal().error_bg_hover))
                                 .tooltip(|window, cx| Tooltip::new("Problems: see what went wrong").build(window, cx))
                                 .on_click(cx.listener(|this, _, w, cx| this.open_settings(settings::Pane::Problems, w, cx)))
                                 .child(format!("⚠ {problems}")),
@@ -2986,15 +2982,15 @@ impl MailApp {
             .w(px(200.))
             .p_3()
             .rounded_lg()
-            .bg(rgb(0x24242b))
+            .bg(pal().popover)
             .border_1()
-            .border_color(rgb(0x3d3d47))
+            .border_color(pal().border_strong)
             .shadow_lg()
             .flex()
             .flex_col()
             .gap_2()
             .text_xs()
-            .child(div().text_color(rgb(MUTED)).font_weight(FontWeight::SEMIBOLD).child("GO TO"))
+            .child(div().text_color(pal().muted).font_weight(FontWeight::SEMIBOLD).child("GO TO"))
             .children(hints.into_iter().map(|h| hint_chip(h.keys, h.label)))
     }
 
@@ -3022,10 +3018,10 @@ impl MailApp {
                     .flex_row()
                     .overflow_hidden()
                     .border_b_1()
-                    .border_color(rgb(BORDER))
-                    .when(marked && !selected, |d| d.bg(rgb(MARKED)))
-                    .when(selected, |d| d.bg(rgb(SELECTED)))
-                    .when(!selected && !marked, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .border_color(pal().border)
+                    .when(marked && !selected, |d| d.bg(pal().marked))
+                    .when(selected, |d| d.bg(pal().selected))
+                    .when(!selected && !marked, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, _, cx| this.select(ix, cx)))
                     .on_mouse_down(
                         MouseButton::Right,
@@ -3037,7 +3033,7 @@ impl MailApp {
                         this.on_row_scroll(ix, ev, window, cx)
                     }))
                     // Selection bar.
-                    .child(div().w(px(3.)).h_full().flex_none().when(selected, |d| d.bg(rgb(ACCENT))))
+                    .child(div().w(px(3.)).h_full().flex_none().when(selected, |d| d.bg(pal().accent)))
                     // Unread dot column.
                     .child(
                         div()
@@ -3051,16 +3047,16 @@ impl MailApp {
                                     div()
                                         .size(px(14.))
                                         .rounded_sm()
-                                        .bg(rgb(ACCENT))
+                                        .bg(pal().accent)
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .text_xs()
-                                        .text_color(rgb(0xffffff))
+                                        .text_color(pal().on_accent)
                                         .child("✓"),
                                 )
                             })
-                            .when(unread && !marked, |d| d.child(div().size(px(7.)).rounded_full().bg(rgb(ACCENT)))),
+                            .when(unread && !marked, |d| d.child(div().size(px(7.)).rounded_full().bg(pal().accent))),
                     )
                     .child(
                         div()
@@ -3092,7 +3088,7 @@ impl MailApp {
                                                     .child(self.row_title(e)),
                                             )
                                             .children(self.row_thread_count(e).map(|n| {
-                                                div().flex_none().text_xs().text_color(rgb(MUTED)).child(n.to_string())
+                                                div().flex_none().text_xs().text_color(pal().muted).child(n.to_string())
                                             })),
                                     )
                                     .child(
@@ -3118,7 +3114,7 @@ impl MailApp {
                                             .when(e.starred, |d| {
                                                 d.child(svg().path("icons/star.svg").size(px(12.)).text_color(rgb(0xe3b341)))
                                             })
-                                            .child(div().text_xs().text_color(rgb(MUTED)).child(e.date.clone())),
+                                            .child(div().text_xs().text_color(pal().muted).child(e.date.clone())),
                                     ),
                             )
                             .child(
@@ -3126,7 +3122,7 @@ impl MailApp {
                                     .flex_none()
                                     .h(px(20.))
                                     .truncate()
-                                    .text_color(rgb(if unread { TEXT } else { SUBTLE }))
+                                    .text_color(if unread { pal().text } else { pal().subtle })
                                     .when(unread, |d| d.font_weight(FontWeight::MEDIUM))
                                     .child(e.subject.clone()),
                             )
@@ -3136,7 +3132,7 @@ impl MailApp {
                                     .h(px(18.))
                                     .truncate()
                                     .text_xs()
-                                    .text_color(rgb(MUTED))
+                                    .text_color(pal().muted)
                                     .child(e.preview.clone()),
                             ),
                     );
@@ -3167,7 +3163,7 @@ impl MailApp {
                 .gap_2()
                 .child(
                     action_button("empty-folder", if armed { confirm } else { idle }, false)
-                    .when(armed, |d| d.bg(rgb(0x5a2024)).text_color(rgb(0xffd6d6)))
+                    .when(armed, |d| d.bg(pal().error_bg_strong).text_color(pal().error))
                     .on_click(cx.listener(|this, _, _, cx| this.empty_folder(cx))),
                 )
                 .when(armed, |d| {
@@ -3175,9 +3171,9 @@ impl MailApp {
                         div()
                             .id("empty-cancel")
                             .text_xs()
-                            .text_color(rgb(MUTED))
+                            .text_color(pal().muted)
                             .cursor_pointer()
-                            .hover(|d| d.text_color(rgb(TEXT)))
+                            .hover(|d| d.text_color(pal().text))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.empty_armed = false;
                                 cx.notify()
@@ -3297,9 +3293,9 @@ impl MailApp {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .bg(rgb(LIST_BG))
+            .bg(pal().list_bg)
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .child(
                 div()
                     .key_context("SearchBox")
@@ -3311,7 +3307,7 @@ impl MailApp {
                     .flex_col()
                     .gap_2()
                     .border_b_1()
-                    .border_color(rgb(BORDER))
+                    .border_color(pal().border)
                     .child(
                         Input::new(&self.search)
                             .when(!self.search.read(cx).value().is_empty(), |input| {
@@ -3324,18 +3320,18 @@ impl MailApp {
                                         .items_center()
                                         .justify_center()
                                         .rounded_full()
-                                        .bg(rgb(0x3a3a44))
+                                        .bg(pal().button)
                                         .text_xs()
-                                        .text_color(rgb(0xe8e8ec))
+                                        .text_color(pal().text)
                                         .cursor_pointer()
-                                        .hover(|d| d.bg(rgb(0x55555f)).text_color(rgb(0xffffff)))
+                                        .hover(|d| d.bg(pal().button_hover).text_color(pal().text))
                                         .on_click(cx.listener(|this, _, window, cx| this.clear_search(window, cx)))
                                         .child("✕"),
                                 )
                             })
-                            .bg(rgb(SEARCH_BG))
-                            .border_color(rgb(SEARCH_BORDER))
-                            .text_color(rgb(0xffffff)),
+                            .bg(pal().search_bg)
+                            .border_color(pal().search_border)
+                            .text_color(pal().text),
                     )
                     .child(
                         div()
@@ -3344,7 +3340,7 @@ impl MailApp {
                             .items_baseline()
                             .justify_between()
                             .child(div().text_base().font_weight(FontWeight::SEMIBOLD).child(title))
-                            .child(div().text_xs().text_color(rgb(MUTED)).child(subtitle)),
+                            .child(div().text_xs().text_color(pal().muted).child(subtitle)),
                     )
                     .children(self.render_empty_button(cx)),
             )
@@ -3368,7 +3364,7 @@ impl MailApp {
             return reader
                 .items_center()
                 .justify_center()
-                .text_color(rgb(MUTED))
+                .text_color(pal().muted)
                 .child(if self.loading { "Loading…" } else { "No messages" });
         };
         let body = e.body.clone().unwrap_or_else(|| "Loading…".into());
@@ -3407,12 +3403,12 @@ impl MailApp {
                                         .size(px(36.))
                                         .flex_none()
                                         .rounded_full()
-                                        .bg(rgb(SELECTED))
+                                        .bg(pal().selected)
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(rgb(ACCENT))
+                                        .text_color(pal().accent)
                                         .child(initial),
                                 )
                                 .child(
@@ -3422,9 +3418,9 @@ impl MailApp {
                                         .flex()
                                         .flex_col()
                                         .child(div().truncate().font_weight(FontWeight::MEDIUM).child(e.from.clone()))
-                                        .child(div().truncate().text_xs().text_color(rgb(MUTED)).child(e.from_email.clone()))
+                                        .child(div().truncate().text_xs().text_color(pal().muted).child(e.from_email.clone()))
                                         .when(!e.to.is_empty(), |d| {
-                                            d.child(div().truncate().text_xs().text_color(rgb(MUTED)).child(conversation::recipients_line(&e.to)))
+                                            d.child(div().truncate().text_xs().text_color(pal().muted).child(conversation::recipients_line(&e.to)))
                                         }),
                                 )
                                 .children(self.render_command_buttons(e, cx))
@@ -3434,10 +3430,10 @@ impl MailApp {
                                             .on_click(cx.listener(|this, _, w, cx| this.open_draft(&OpenDraft, w, cx))),
                                     )
                                 })
-                                .child(div().flex_none().text_xs().text_color(rgb(MUTED)).child(e.date.clone())),
+                                .child(div().flex_none().text_xs().text_color(pal().muted).child(e.date.clone())),
                         )
                         .children(self.render_attachments(e, cx))
-                        .child(div().h(px(1.)).bg(rgb(BORDER)));
+                        .child(div().h(px(1.)).bg(pal().border));
         if has_html {
             let key = e.key();
             let blocked = !self.images_allowed.contains(&key)
@@ -3450,13 +3446,13 @@ impl MailApp {
                     .px_3()
                     .py_2()
                     .rounded_md()
-                    .bg(rgb(SEARCH_BG))
+                    .bg(pal().search_bg)
                     .flex()
                     .items_center()
                     .justify_between()
                     .gap_3()
                     .text_xs()
-                    .text_color(rgb(SUBTLE))
+                    .text_color(pal().subtle)
                     .child("Remote images are blocked to protect your privacy.")
                     .child(
                         div()
@@ -3465,10 +3461,10 @@ impl MailApp {
                             .px_2()
                             .py_1()
                             .rounded_md()
-                            .bg(rgb(0x3a3a44))
-                            .text_color(rgb(TEXT))
+                            .bg(pal().button)
+                            .text_color(pal().text)
                             .cursor_pointer()
-                            .hover(|d| d.bg(rgb(0x55555f)))
+                            .hover(|d| d.bg(pal().button_hover))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.images_allowed.insert(key.clone());
                                 cx.notify();
@@ -3502,7 +3498,7 @@ impl MailApp {
                         .pb_6()
                         .text_sm()
                         .line_height(rems(1.45))
-                        .text_color(rgb(TEXT))
+                        .text_color(pal().text)
                         .child(body),
                 ),
         )
@@ -3663,8 +3659,8 @@ impl Render for MailApp {
             .overflow_hidden()
             .flex()
             .flex_row()
-            .bg(rgb(BG))
-            .text_color(rgb(TEXT))
+            .bg(pal().bg)
+            .text_color(pal().text)
             .text_sm()
             .relative()
             .flex_col()

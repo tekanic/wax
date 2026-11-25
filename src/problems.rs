@@ -87,9 +87,9 @@ impl MailApp {
                 action_button("prob-clear", if armed { "Click again to clear" } else { "Clear" }, false)
                     .on_click(cx.listener(|this, _, _, cx| this.clear_problems(cx))),
             );
-        let mut list = div().flex().flex_col().border_1().border_color(rgb(BORDER)).rounded_md();
+        let mut list = div().flex().flex_col().border_1().border_color(pal().border).rounded_md();
         if shown.is_empty() {
-            list = list.child(div().px_4().py_4().text_sm().text_color(rgb(MUTED)).child("Nothing has gone wrong."));
+            list = list.child(div().px_4().py_4().text_sm().text_color(pal().muted).child("Nothing has gone wrong."));
         }
         for (i, e) in shown.iter().enumerate().take(500) {
             let text = e.text.clone();
@@ -101,25 +101,25 @@ impl MailApp {
                     .flex()
                     .items_start()
                     .gap_3()
-                    .when(i > 0, |d| d.border_t_1().border_color(rgb(BORDER)))
-                    .child(div().w(px(150.)).flex_none().text_xs().text_color(rgb(MUTED)).pt(px(2.)).child(errlog::when(e.ts)))
+                    .when(i > 0, |d| d.border_t_1().border_color(pal().border))
+                    .child(div().w(px(150.)).flex_none().text_xs().text_color(pal().muted).pt(px(2.)).child(errlog::when(e.ts)))
                     .child(
                         div()
                             .flex_none()
                             .px(px(5.))
                             .rounded_sm()
-                            .bg(rgb(0x2a2a33))
+                            .bg(pal().card)
                             .text_xs()
-                            .text_color(rgb(SUBTLE))
+                            .text_color(pal().subtle)
                             .child(tag(&e.account)),
                     )
-                    .child(div().flex_1().min_w_0().text_sm().text_color(rgb(TEXT)).child(e.text.clone()))
+                    .child(div().flex_1().min_w_0().text_sm().text_color(pal().text).child(e.text.clone()))
                     .child(
                         div()
                             .id(("problem-copy", i))
                             .flex_none()
                             .text_xs()
-                            .text_color(rgb(ACCENT))
+                            .text_color(pal().accent)
                             .cursor_pointer()
                             .hover(|d| d.underline())
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -144,7 +144,7 @@ impl MailApp {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(div().text_sm().text_color(rgb(SUBTLE)).child(
+                    .child(div().text_sm().text_color(pal().subtle).child(
                         "Errors from every account, newest first. They fade from the bottom bar; they're kept here (errors.log in the app's data folder) so you can look into them or send them along.",
                     ))
                     .child(toolbar)

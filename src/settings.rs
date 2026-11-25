@@ -19,11 +19,24 @@ pub struct Settings {
     pub sig_reply: Option<i64>,
     /// The list shows one row per conversation.
     pub conversations: bool,
+    pub theme_mode: crate::theme::Mode,
+    pub theme_light: String,
+    pub theme_dark: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { mono: true, hide_list_when_writing: true, blocks_open: false, sig_new: None, sig_reply: None, conversations: true }
+        Settings {
+            mono: true,
+            hide_list_when_writing: true,
+            blocks_open: false,
+            sig_new: None,
+            sig_reply: None,
+            conversations: true,
+            theme_mode: crate::theme::Mode::System,
+            theme_light: crate::theme::DEFAULT_LIGHT.into(),
+            theme_dark: crate::theme::DEFAULT_DARK.into(),
+        }
     }
 }
 
@@ -45,6 +58,7 @@ impl Settings {
             sig_new: id("signature.new"),
             sig_reply: id("signature.reply"),
             conversations: d.conversations,
+            ..d
         }
     }
 
@@ -212,6 +226,20 @@ impl MailApp {
         };
         let account = if who.account.is_empty() { self.account.to_string() } else { who.account.clone() };
         sig.filter(|id| self.signatures.iter().any(|s| s.id == *id && s.account.eq_ignore_ascii_case(&account)))
+    }
+
+    pub fn theme_changed(&mut self, cx: &mut Context<Self>) {
+        self.use_theme(false, cx);
+        self.save_settings(cx);
+    }
+
+    pub fn use_theme(&mut self, force: bool, cx: &mut Context<Self>) {
+        let s = &self.settings;
+        let changed = crate::theme::apply(s.theme_mode, &s.theme_light, &s.theme_dark, cx.window_appearance());
+        if changed || force {
+            crate::theme::sync_components(cx);
+            cx.refresh_windows();
+        }
     }
 
     pub fn save_settings(&mut self, cx: &mut Context<Self>) {
@@ -536,8 +564,8 @@ pub fn choice(id: impl Into<ElementId>, label: impl Into<SharedString>, on: bool
         .text_sm()
         .cursor_pointer()
         .border_1()
-        .when(on, |d| d.bg(rgb(SELECTED)).border_color(rgb(ACCENT)).text_color(rgb(TEXT)))
-        .when(!on, |d| d.border_color(rgb(BORDER)).text_color(rgb(SUBTLE)).hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+        .when(on, |d| d.bg(pal().selected).border_color(pal().accent).text_color(pal().text))
+        .when(!on, |d| d.border_color(pal().border).text_color(pal().subtle).hover(|d| d.bg(pal().hover).text_color(pal().text)))
         .child(label.into())
 }
 
@@ -550,22 +578,22 @@ pub fn setting_row(title: &'static str, about: &'static str, control: impl IntoE
         .gap_8()
         .py_4()
         .border_b_1()
-        .border_color(rgb(BORDER))
+        .border_color(pal().border)
         .child(
             div()
                 .flex()
                 .flex_col()
                 .gap_0p5()
                 .min_w_0()
-                .child(div().text_sm().text_color(rgb(TEXT)).child(title))
-                .child(div().text_xs().text_color(rgb(MUTED)).child(about)),
+                .child(div().text_sm().text_color(pal().text).child(title))
+                .child(div().text_xs().text_color(pal().muted).child(about)),
         )
         .child(div().flex().flex_none().gap_1p5().child(control))
 }
 
 /// Small drawing of a layout, for the layout picker.
 fn layout_thumb(layout: Layout, accent: u32) -> Div {
-    let bar = |w: f32, strong: bool| div().h(px(4.)).w(px(w)).rounded_sm().bg(rgb(if strong { 0x9a9aa6 } else { 0x55555f }));
+    let bar = |w: f32, strong: bool| div().h(px(4.)).w(px(w)).rounded_sm().bg(if strong { pal().subtle } else { pal().button_hover });
     let lines = div().flex().flex_col().gap(px(3.)).child(bar(34., true)).child(bar(26., false)).child(bar(30., false));
     let logo = div().size(px(16.)).rounded_sm().bg(rgb(accent));
     match layout {
@@ -619,8 +647,8 @@ impl MailApp {
                 .rounded_md()
                 .text_sm()
                 .cursor_pointer()
-                .when(on, |d| d.bg(rgb(SELECTED)).text_color(rgb(TEXT)))
-                .when(!on, |d| d.text_color(rgb(SUBTLE)).hover(|d| d.bg(rgb(HOVER))))
+                .when(on, |d| d.bg(pal().selected).text_color(pal().text))
+                .when(!on, |d| d.text_color(pal().subtle).hover(|d| d.bg(pal().hover)))
                 .on_click(cx.listener(move |this, _, w, cx| this.set_pane(pane, w, cx)))
                 .child(label)
         };
@@ -632,7 +660,7 @@ impl MailApp {
             .items_center()
             .gap_2()
             .border_b_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).mr_4().child("Settings"))
             .child(tab("pane-accounts", "Accounts", Pane::Accounts))
             .child(tab("pane-writing", "General", Pane::Writing))
@@ -663,7 +691,7 @@ impl MailApp {
             .h_full()
             .flex()
             .flex_col()
-            .bg(rgb(BG))
+            .bg(pal().bg)
             .child(header)
             .child(div().flex_1().min_h_0().child(body))
     }
@@ -710,6 +738,42 @@ impl MailApp {
             .child(choice("open-keymap", "Edit shortcuts", false).on_click(cx.listener(|_, _, _, _| {
                 std::process::Command::new("open").arg("-t").arg(crate::keys::keymap_file()).spawn().ok();
             })));
+        let mode = |id: &'static str, label: &'static str, m: crate::theme::Mode| {
+            choice(id, label, s.theme_mode == m).on_click(cx.listener(move |this, _, _, cx| {
+                this.settings.theme_mode = m;
+                this.theme_changed(cx);
+            }))
+        };
+        let theme_mode = div()
+            .flex()
+            .gap_1p5()
+            .child(mode("theme-system", "Match the Mac", crate::theme::Mode::System))
+            .child(mode("theme-light", "Light", crate::theme::Mode::Light))
+            .child(mode("theme-dark", "Dark", crate::theme::Mode::Dark));
+        let picker = |dark: bool, current: &str| {
+            let mut row = div().flex().flex_wrap().gap_1p5().max_w(px(360.));
+            for name in crate::theme::names(dark) {
+                let on = name == current;
+                let id = SharedString::from(format!("theme-{}-{name}", if dark { "d" } else { "l" }));
+                let pick = name.clone();
+                row = row.child(choice(id, name, on).on_click(cx.listener(move |this, _, _, cx| {
+                    if dark {
+                        this.settings.theme_dark = pick.clone();
+                    } else {
+                        this.settings.theme_light = pick.clone();
+                    }
+                    this.theme_changed(cx);
+                })));
+            }
+            row
+        };
+        let light_themes = picker(false, &s.theme_light);
+        let dark_themes = picker(true, &s.theme_dark);
+        let theme_files = div().flex().gap_1p5().child(choice("open-themes", "Show folder", false).on_click(cx.listener(|_, _, _, _| {
+            let dir = crate::files::config_dir().join("themes");
+            std::fs::create_dir_all(&dir).ok();
+            std::process::Command::new("open").arg(dir).spawn().ok();
+        })));
         let at_login = crate::login::enabled();
         let login = div()
             .flex()
@@ -727,6 +791,14 @@ impl MailApp {
                     .max_w(px(760.))
                     .flex()
                     .flex_col()
+                    .child(setting_row("Appearance", "Match the Mac switches between your light and dark themes with the system.", theme_mode))
+                    .child(setting_row("Light theme", "Used in light mode.", light_themes))
+                    .child(setting_row("Dark theme", "Used in dark mode.", dark_themes))
+                    .child(setting_row(
+                        "Theme files",
+                        "Wax reads Zed theme files: put .json themes in ~/.config/wax/themes (themes in ~/.config/zed/themes show up too). Edits apply when you save.",
+                        theme_files,
+                    ))
                     .child(setting_row("Font", "Used while writing and in the message you send. Each message can switch.", font))
                     .child(setting_row("Message list while writing", "Hiding it gives the message more room.", hide))
                     .child(setting_row(
@@ -740,7 +812,7 @@ impl MailApp {
                         "Everything here is plain text in ~/.config/wax. Edit the files and Wax picks up the change when you save.",
                         files_buttons,
                     ))
-                    .child(div().pt_4().text_sm().text_color(rgb(MUTED)).child(
+                    .child(div().pt_4().text_sm().text_color(pal().muted).child(
                         "Signatures belong to accounts: design them and pick each account's defaults under Signatures.",
                     )),
             )
@@ -751,11 +823,11 @@ impl MailApp {
         let editing = v.and_then(|v| v.editor.as_ref());
         let current = editing.map(|e| e.id);
         // Left: the list.
-        let mut list = div().w(px(200.)).flex_none().h_full().p_3().flex().flex_col().gap_1().border_r_1().border_color(rgb(BORDER));
+        let mut list = div().w(px(200.)).flex_none().h_full().p_3().flex().flex_col().gap_1().border_r_1().border_color(pal().border);
         let shown = self.sig_account();
         if self.accounts.len() > 1 {
-            let mut pick = div().flex().flex_col().gap_1().pb_2().mb_2().border_b_1().border_color(rgb(BORDER));
-            pick = pick.child(div().px_1().pb_1().text_xs().text_color(rgb(MUTED)).child("Account"));
+            let mut pick = div().flex().flex_col().gap_1().pb_2().mb_2().border_b_1().border_color(pal().border);
+            pick = pick.child(div().px_1().pb_1().text_xs().text_color(pal().muted).child("Account"));
             for a in &self.accounts {
                 let on = a.email == shown;
                 let email = a.email.clone();
@@ -768,9 +840,9 @@ impl MailApp {
                         .text_sm()
                         .truncate()
                         .cursor_pointer()
-                        .text_color(rgb(if on { TEXT } else { SUBTLE }))
-                        .when(on, |d| d.bg(rgb(SELECTED)))
-                        .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                        .text_color(if on { pal().text } else { pal().subtle })
+                        .when(on, |d| d.bg(pal().selected))
+                        .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                         .on_click(cx.listener(move |this, _, w, cx| this.show_signatures_of(email.clone(), w, cx)))
                         .child(a.short()),
                 );
@@ -796,8 +868,8 @@ impl MailApp {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .when(on, |d| d.bg(rgb(SELECTED)))
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .when(on, |d| d.bg(pal().selected))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, w, cx| this.edit_signature(id, w, cx)))
                     .child(div().size(px(8.)).rounded_full().flex_none().bg(rgb(sig.accent)))
                     .child(
@@ -805,9 +877,9 @@ impl MailApp {
                             .flex()
                             .flex_col()
                             .min_w_0()
-                            .child(div().text_sm().truncate().text_color(rgb(TEXT)).child(sig.label.clone()))
+                            .child(div().text_sm().truncate().text_color(pal().text).child(sig.label.clone()))
                             .when(!uses.is_empty(), |d| {
-                                d.child(div().text_xs().text_color(rgb(MUTED)).child(format!("Default for {}", uses.join(" and "))))
+                                d.child(div().text_xs().text_color(pal().muted).child(format!("Default for {}", uses.join(" and "))))
                             }),
                     ),
             );
@@ -821,8 +893,8 @@ impl MailApp {
                 .rounded_md()
                 .cursor_pointer()
                 .text_sm()
-                .text_color(rgb(ACCENT))
-                .hover(|d| d.bg(rgb(HOVER)))
+                .text_color(pal().accent)
+                .hover(|d| d.bg(pal().hover))
                 .on_click(cx.listener(|this, _, w, cx| this.new_signature(w, cx)))
                 .child("+ New signature"),
         );
@@ -834,15 +906,15 @@ impl MailApp {
                     .items_center()
                     .justify_center()
                     .text_sm()
-                    .text_color(rgb(MUTED))
+                    .text_color(pal().muted)
                     .child("Make a signature with “+ New signature”."),
             );
         };
         let id = sig.id;
         let sig_acct = sig.account.clone();
-        let label = |text: &'static str| div().text_xs().text_color(rgb(MUTED)).font_weight(FontWeight::MEDIUM).child(text);
+        let label = |text: &'static str| div().text_xs().text_color(pal().muted).font_weight(FontWeight::MEDIUM).child(text);
         let input = |i: usize| {
-            Input::new(&editor.inputs[i].1).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER)).text_color(rgb(0xffffff))
+            Input::new(&editor.inputs[i].1).bg(pal().search_bg).border_color(pal().search_border).text_color(pal().text)
         };
         let field = |i: usize| div().flex().flex_col().gap_1().child(label(editor.inputs[i].0)).child(input(i));
         // Layout cards.
@@ -860,11 +932,11 @@ impl MailApp {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .when(on, |d| d.border_color(rgb(ACCENT)).bg(rgb(SELECTED)))
-                    .when(!on, |d| d.border_color(rgb(BORDER)).hover(|d| d.bg(rgb(HOVER))))
+                    .when(on, |d| d.border_color(pal().accent).bg(pal().selected))
+                    .when(!on, |d| d.border_color(pal().border).hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, _, cx| this.update_signature(id, cx, |s| s.layout = l)))
                     .child(div().h(px(44.)).flex().items_center().justify_center().child(layout_thumb(l, sig.accent)))
-                    .child(div().text_xs().text_center().text_color(rgb(if on { TEXT } else { SUBTLE })).child(l.label())),
+                    .child(div().text_xs().text_center().text_color(if on { pal().text } else { pal().subtle }).child(l.label())),
             );
         }
         let mut swatches = div().flex().gap_2();
@@ -878,7 +950,7 @@ impl MailApp {
                     .cursor_pointer()
                     .bg(rgb(c))
                     .border_2()
-                    .border_color(rgb(if on { 0xffffff } else { BG }))
+                    .border_color(if on { pal().text } else { pal().bg })
                     .on_click(cx.listener(move |this, _, _, cx| this.update_signature(id, cx, |s| s.accent = c))),
             );
         }
@@ -943,7 +1015,7 @@ impl MailApp {
                     cx.notify()
                 }
             })));
-        let section = |title: &'static str| div().pt_3().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(rgb(TEXT)).child(title);
+        let section = |title: &'static str| div().pt_3().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(pal().text).child(title);
         let form = div()
             .id("sig-form")
             .w(px(380.))
@@ -956,7 +1028,7 @@ impl MailApp {
             .flex_col()
             .gap_3()
             .border_r_1()
-            .border_color(rgb(BORDER))
+            .border_color(pal().border)
             .child(field(0))
             .child(section("Layout"))
             .child(layouts)
@@ -979,14 +1051,14 @@ impl MailApp {
             .child(section("Follow line"))
             .child(div().flex().gap_2().child(div().w(px(110.)).child(field(10))).child(div().flex_1().child(field(11))))
             .when(sig.logo.is_some() && sig.layout == Layout::Stacked, |d| {
-                d.child(div().text_xs().text_color(rgb(MUTED)).child("The Text layout leaves the logo out."))
+                d.child(div().text_xs().text_color(pal().muted).child("The Text layout leaves the logo out."))
             })
             .child(section("Use by default for"))
             .child(defaults)
             .child(
                 div().pt_4().child(
                     action_button("sig-delete", "Delete signature", false)
-                        .text_color(rgb(ERROR))
+                        .text_color(pal().error)
                         .on_click(cx.listener(move |this, _, w, cx| this.delete_signature(id, w, cx))),
                 ),
             );
@@ -998,7 +1070,7 @@ impl MailApp {
             .flex()
             .flex_col()
             .gap_2()
-            .child(div().text_xs().text_color(rgb(MUTED)).child("How it arrives"))
+            .child(div().text_xs().text_color(pal().muted).child("How it arrives"))
             .child(
                 div()
                     .flex_1()
@@ -1006,7 +1078,7 @@ impl MailApp {
                     .rounded_md()
                     .overflow_hidden()
                     .border_1()
-                    .border_color(rgb(BORDER))
+                    .border_color(pal().border)
                     .child(self.html_view.placeholder()),
             );
         div().size_full().flex().child(list).child(form).child(preview)
@@ -1193,8 +1265,8 @@ impl MailApp {
                 .py_3()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(if on { ACCENT } else { BORDER }))
-                .when(on, |d| d.bg(rgb(SELECTED)))
+                .border_color(if on { pal().accent } else { pal().border })
+                .when(on, |d| d.bg(pal().selected))
                 .flex()
                 .items_center()
                 .justify_between()
@@ -1205,8 +1277,8 @@ impl MailApp {
                         .flex_col()
                         .gap_0p5()
                         .min_w_0()
-                        .child(div().text_sm().text_color(rgb(TEXT)).child(who.label()))
-                        .child(div().text_xs().text_color(rgb(MUTED)).child(format!(
+                        .child(div().text_sm().text_color(pal().text).child(who.label()))
+                        .child(div().text_xs().text_color(pal().muted).child(format!(
                             "New: {} · Replies: {}",
                             sig_name(who.sig_new),
                             sig_name(who.sig_reply)
@@ -1214,7 +1286,7 @@ impl MailApp {
                 )
         };
         let all = self.all_identities();
-        let main = row(&all[0], false).child(div().text_xs().text_color(rgb(MUTED)).child("Account · signatures under Signatures"));
+        let main = row(&all[0], false).child(div().text_xs().text_color(pal().muted).child("Account · signatures under Signatures"));
         let mut list = div().flex().flex_col().gap_2().child(main);
         for who in &self.account_identities() {
             let id = who.id;
@@ -1223,9 +1295,9 @@ impl MailApp {
                 row(who, on)
                     .id(("address", id as u64))
                     .cursor_pointer()
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, w, cx| this.edit_address(id, w, cx)))
-                    .child(div().text_xs().text_color(rgb(ACCENT)).child(if on { "Editing" } else { "Edit" })),
+                    .child(div().text_xs().text_color(pal().accent).child(if on { "Editing" } else { "Edit" })),
             );
             if let (true, Some(e)) = (on, editing) {
                 list = list.child(self.render_address_editor(who, e, cx));
@@ -1236,7 +1308,7 @@ impl MailApp {
                 .id("address-new")
                 .mt_1()
                 .text_sm()
-                .text_color(rgb(ACCENT))
+                .text_color(pal().accent)
                 .cursor_pointer()
                 .hover(|d| d.underline())
                 .on_click(cx.listener(|this, _, w, cx| this.new_address(w, cx)))
@@ -1254,11 +1326,11 @@ impl MailApp {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(div().text_sm().text_color(rgb(SUBTLE)).child(
+                    .child(div().text_sm().text_color(pal().subtle).child(
                         "Extra addresses the account on screen sends as, each with its own signatures. Replies come from the address a message was sent to.",
                     ))
                     .child(list)
-                    .child(div().text_xs().text_color(rgb(MUTED)).child(
+                    .child(div().text_xs().text_color(pal().muted).child(
                         "Gmail sends from an extra address only after it's added under Gmail Settings → Accounts → “Send mail as”. Until then Gmail replaces it with your Gmail address.",
                     )),
             )
@@ -1267,9 +1339,9 @@ impl MailApp {
     fn render_address_editor(&self, who: &Identity, e: &AddressEditor, cx: &mut Context<Self>) -> impl IntoElement {
         let id = who.id;
         let input = |entity: &Entity<InputState>| {
-            Input::new(entity).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER)).text_color(rgb(0xffffff))
+            Input::new(entity).bg(pal().search_bg).border_color(pal().search_border).text_color(pal().text)
         };
-        let label = |t: &'static str| div().text_xs().text_color(rgb(MUTED)).child(t);
+        let label = |t: &'static str| div().text_xs().text_color(pal().muted).child(t);
         let picks = |which: &'static str, current: Option<i64>, cx: &mut Context<Self>| {
             let mut row = div().flex().flex_wrap().gap_1p5().child(
                 choice(SharedString::from(format!("addr-{which}-none")), "None", current.is_none()).on_click(cx.listener(
@@ -1295,7 +1367,7 @@ impl MailApp {
             .pl_4()
             .py_2()
             .border_l_2()
-            .border_color(rgb(ACCENT))
+            .border_color(pal().accent)
             .flex()
             .flex_col()
             .gap_3()
@@ -1311,7 +1383,7 @@ impl MailApp {
             .child(
                 div().flex().child(
                     action_button("address-delete", "Remove address", false)
-                        .text_color(rgb(ERROR))
+                        .text_color(pal().error)
                         .on_click(cx.listener(move |this, _, _, cx| this.delete_address(id, cx))),
                 ),
             )

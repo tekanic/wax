@@ -1,0 +1,71 @@
+{
+  "$schema": "https://zed.dev/schema/themes/v0.2.0.json",
+  "name": "Wax",
+  "author": "Wax",
+  "themes": [
+    {
+      "name": "Wax Dark",
+      "appearance": "dark",
+      "style": {
+        "background": "#151518ff",
+        "editor.background": "#1b1b1fff",
+        "panel.background": "#151518ff",
+        "surface.background": "#18181cff",
+        "editor.subheader.background": "#202026ff",
+        "elevated_surface.background": "#24242bff",
+        "border": "#3d3d47ff",
+        "border.variant": "#2a2a31ff",
+        "text": "#e8e8ecff",
+        "text.muted": "#b4b4bdff",
+        "text.placeholder": "#82828dff",
+        "text.disabled": "#6a6a74ff",
+        "text.accent": "#4f8ff7ff",
+        "icon.accent": "#4f8ff7ff",
+        "element.background": "#26262eff",
+        "element.hover": "#3a3a44ff",
+        "element.active": "#55555fff",
+        "element.selected": "#1f2a40ff",
+        "ghost_element.background": "#00000000",
+        "ghost_element.hover": "#23232aff",
+        "ghost_element.active": "#30303aff",
+        "ghost_element.selected": "#1f2a40ff",
+        "error": "#f87171ff",
+        "warning": "#f0c674ff",
+        "success": "#3f9b62ff",
+        "info": "#4f8ff7ff"
+      }
+    },
+    {
+      "name": "Wax Light",
+      "appearance": "light",
+      "style": {
+        "background": "#f1f1f4ff",
+        "editor.background": "#ffffffff",
+        "panel.background": "#f1f1f4ff",
+        "surface.background": "#f8f8faff",
+        "editor.subheader.background": "#f4f4f7ff",
+        "elevated_surface.background": "#ffffffff",
+        "border": "#cfcfd6ff",
+        "border.variant": "#e3e3e8ff",
+        "text": "#1c1c21ff",
+        "text.muted": "#4b4b55ff",
+        "text.placeholder": "#71717cff",
+        "text.disabled": "#9a9aa4ff",
+        "text.accent": "#2563ebff",
+        "icon.accent": "#2563ebff",
+        "element.background": "#ffffffff",
+        "element.hover": "#e6e6ebff",
+        "element.active": "#d6d6ddff",
+        "element.selected": "#dce7fdff",
+        "ghost_element.background": "#00000000",
+        "ghost_element.hover": "#ececf0ff",
+        "ghost_element.active": "#e6e6ebff",
+        "ghost_element.selected": "#dce7fdff",
+        "error": "#c53030ff",
+        "warning": "#9a6700ff",
+        "success": "#1f7a45ff",
+        "info": "#2563ebff"
+      }
+    }
+  ]
+}

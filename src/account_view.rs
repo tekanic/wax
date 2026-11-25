@@ -309,9 +309,9 @@ impl MailApp {
                 .py_3()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(if on { ACCENT } else { BORDER }))
-                .when(on, |d| d.bg(rgb(SELECTED)))
-                .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                .border_color(if on { pal().accent } else { pal().border })
+                .when(on, |d| d.bg(pal().selected))
+                .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, w, cx| this.edit_account(&e1, w, cx)))
                 .flex()
@@ -331,10 +331,10 @@ impl MailApp {
                                 .flex()
                                 .gap_2()
                                 .text_sm()
-                                .child(div().text_color(rgb(TEXT)).child(a.email.clone()))
-                                .when(*self.account == *a.email, |d| d.child(div().text_color(rgb(MUTED)).child("· on screen"))),
+                                .child(div().text_color(pal().text).child(a.email.clone()))
+                                .when(*self.account == *a.email, |d| d.child(div().text_color(pal().muted).child("· on screen"))),
                         )
-                        .child(div().text_xs().text_color(rgb(if needs_sign_in { 0xe0a050 } else { MUTED })).child({
+                        .child(div().text_xs().text_color(if needs_sign_in { pal().warning } else { pal().muted }).child({
                             let open = mail::open_connections(&a.email);
                             format!(
                                 "{} · {} · {open} of {} connections open",
@@ -376,13 +376,13 @@ impl MailApp {
                         .px_4()
                         .py_3()
                         .rounded_md()
-                        .bg(rgb(0x1b1b20))
+                        .bg(pal().bg)
                         .flex()
                         .flex_col()
                         .child(setting_row(
                             "Sender name",
                             "Shown to people you write to from this account.",
-                            div().w(px(280.)).child(Input::new(&ed.name).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER))),
+                            div().w(px(280.)).child(Input::new(&ed.name).bg(pal().search_bg).border_color(pal().search_border)),
                         ))
                         .child(setting_row(
                             "Badge",
@@ -392,7 +392,7 @@ impl MailApp {
                                 .items_center()
                                 .gap_3()
                                 .child(account_badge(&a.initial(), a.color(), 26.))
-                                .child(div().w(px(120.)).child(Input::new(&ed.badge).bg(rgb(SEARCH_BG)).border_color(rgb(SEARCH_BORDER)))),
+                                .child(div().w(px(120.)).child(Input::new(&ed.badge).bg(pal().search_bg).border_color(pal().search_border))),
                         ))
                         .child(setting_row("Colour", "Its badge in the sidebar and its tag in All Inboxes.", {
                             let mut swatches = div().flex().items_center().gap_1p5();
@@ -416,21 +416,21 @@ impl MailApp {
                                         .bg(rgb(c))
                                         .cursor_pointer()
                                         .border_2()
-                                        .border_color(rgb(if on { 0xffffff } else { 0x1b1b20 }))
-                                        .hover(|d| d.border_color(rgb(0xb8b8c0)))
+                                        .border_color(if on { pal().text } else { pal().bg })
+                                        .hover(|d| d.border_color(pal().subtle))
                                         .on_click(cx.listener(move |this, _, _, cx| this.set_account_color(&email, Some(c), cx))),
                                 );
                             }
                             swatches
                         }))
-                        .child(div().pt_3().text_xs().text_color(rgb(MUTED)).child(
+                        .child(div().pt_3().text_xs().text_color(pal().muted).child(
                             "This account's signatures: Signatures. Its labels: Labels. Extra From addresses: From addresses. Sender rules: accounts/<address>/rules.toml.",
                         )),
                 );
             }
         }
         if confirm.is_some() {
-            list = list.child(div().text_xs().text_color(rgb(MUTED)).child(
+            list = list.child(div().text_xs().text_color(pal().muted).child(
                 "Removing signs the account out of Google here and puts its settings and rules in accounts/.removed. Its mail stays in Gmail.",
             ));
         }
@@ -439,7 +439,7 @@ impl MailApp {
                 .flex()
                 .items_center()
                 .gap_3()
-                .child(div().text_sm().text_color(rgb(SUBTLE)).child("Waiting for you to finish in the browser…"))
+                .child(div().text_sm().text_color(pal().subtle).child("Waiting for you to finish in the browser…"))
                 .child(action_button("signin-cancel", "Cancel", false).on_click(cx.listener(|this, _, _, cx| this.cancel_sign_in(cx))))
         } else {
             div().flex().child(
@@ -448,13 +448,13 @@ impl MailApp {
             )
         };
         let client_box = if has_client {
-            div().flex().items_center().gap_2().text_xs().text_color(rgb(MUTED)).child(
+            div().flex().items_center().gap_2().text_xs().text_color(pal().muted).child(
                 if oauth::client_file().exists() { "Google sign-in uses your own Google Cloud client." } else { "Google sign-in is built in." },
             ).when(oauth::client_file().exists(), |d| {
                 d.child(
                     div()
                         .id("client-change")
-                        .text_color(rgb(ACCENT))
+                        .text_color(pal().accent)
                         .cursor_pointer()
                         .hover(|d| d.underline())
                         .on_click(cx.listener(|this, _, _, cx| this.choose_google_client(cx)))
@@ -463,20 +463,20 @@ impl MailApp {
             })
         } else {
             let step = |n: &str, t: &str| {
-                div().flex().gap_2().text_sm().child(div().w(px(18.)).flex_none().text_color(rgb(MUTED)).child(n.to_string())).child(
-                    div().flex_1().min_w_0().text_color(rgb(SUBTLE)).child(t.to_string()),
+                div().flex().gap_2().text_sm().child(div().w(px(18.)).flex_none().text_color(pal().muted).child(n.to_string())).child(
+                    div().flex_1().min_w_0().text_color(pal().subtle).child(t.to_string()),
                 )
             };
             div()
                 .p_4()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(BORDER))
+                .border_color(pal().border)
                 .flex()
                 .flex_col()
                 .gap_2()
-                .child(div().text_sm().text_color(rgb(TEXT)).child("Set up Google sign-in (once)"))
-                .child(div().text_xs().text_color(rgb(MUTED)).child(
+                .child(div().text_sm().text_color(pal().text).child("Set up Google sign-in (once)"))
+                .child(div().text_xs().text_color(pal().muted).child(
                     "This build has no Google client of its own, so it uses one from your Google Cloud project. Free, about 10 minutes.",
                 ))
                 .child(step("1", "console.cloud.google.com: create a project and turn on the Gmail API."))
@@ -502,7 +502,7 @@ impl MailApp {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(div().text_sm().text_color(rgb(SUBTLE)).child(
+                    .child(div().text_sm().text_color(pal().subtle).child(
                         "Your mail accounts. Each has its own sender name, signatures, From addresses and sender rules. Gmail and Google Workspace accounts sign in with Google; the app never sees your password.",
                     ))
                     .child(client_box)
@@ -616,7 +616,7 @@ impl MailApp {
             .pt(px(10.))
             .pb(px(8.))
             .border_b_1()
-            .border_color(rgb(BORDER));
+            .border_color(pal().border);
         if self.accounts.is_empty() {
             return b.child(
                 div()
@@ -624,7 +624,7 @@ impl MailApp {
                     .px(px(10.))
                     .py_2()
                     .text_xs()
-                    .text_color(rgb(ACCENT))
+                    .text_color(pal().accent)
                     .cursor_pointer()
                     .hover(|d| d.underline())
                     .on_click(cx.listener(|this, _, w, cx| this.open_settings(crate::settings::Pane::Accounts, w, cx)))
@@ -645,9 +645,9 @@ impl MailApp {
                     .px(px(10.))
                     .rounded(px(6.))
                     .cursor_pointer()
-                    .text_color(rgb(if on { TEXT } else { SUBTLE }))
-                    .when(on, |d| d.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM))
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+                    .text_color(if on { pal().text } else { pal().subtle })
+                    .when(on, |d| d.bg(pal().selected).font_weight(FontWeight::MEDIUM))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
                     .on_click(cx.listener(|this, _, w, cx| {
                         if !this.query.is_empty() {
                             this.search.update(cx, |s, cx| s.set_value("", w, cx));
@@ -655,9 +655,9 @@ impl MailApp {
                         this.close_sweep(w, cx);
                         this.open_unified(mail::INBOX, cx)
                     }))
-                    .child(svg().path("icons/inbox.svg").size(px(16.)).flex_none().text_color(rgb(ACCENT)))
+                    .child(svg().path("icons/inbox.svg").size(px(16.)).flex_none().text_color(pal().accent))
                     .child(div().flex_1().child("All Inboxes"))
-                    .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(rgb(ACCENT)).child(unseen.to_string()))),
+                    .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(pal().accent).child(unseen.to_string()))),
             );
             let on = self.unified && self.unified_box == mail::SENT && self.sweep.is_none();
             b = b.child(
@@ -671,9 +671,9 @@ impl MailApp {
                     .px(px(10.))
                     .rounded(px(6.))
                     .cursor_pointer()
-                    .text_color(rgb(if on { TEXT } else { SUBTLE }))
-                    .when(on, |d| d.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM))
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+                    .text_color(if on { pal().text } else { pal().subtle })
+                    .when(on, |d| d.bg(pal().selected).font_weight(FontWeight::MEDIUM))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
                     .on_click(cx.listener(|this, _, w, cx| {
                         if !this.query.is_empty() {
                             this.search.update(cx, |s, cx| s.set_value("", w, cx));
@@ -681,7 +681,7 @@ impl MailApp {
                         this.close_sweep(w, cx);
                         this.open_unified(mail::SENT, cx)
                     }))
-                    .child(svg().path("icons/send.svg").size(px(16.)).flex_none().text_color(rgb(ACCENT)))
+                    .child(svg().path("icons/send.svg").size(px(16.)).flex_none().text_color(pal().accent))
                     .child(div().flex_1().child("All Sent")),
             );
         }
@@ -709,9 +709,9 @@ impl MailApp {
             .px(px(10.))
             .rounded(px(6.))
             .cursor_pointer()
-            .text_color(rgb(if on { TEXT } else { SUBTLE }))
-            .when(on, |d| d.bg(rgb(SELECTED)))
-            .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+            .text_color(if on { pal().text } else { pal().subtle })
+            .when(on, |d| d.bg(pal().selected))
+            .when(!on, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
             .tooltip({
                 let email = a.email.clone();
                 move |window, cx| Tooltip::new(email.clone()).build(window, cx)
@@ -725,7 +725,7 @@ impl MailApp {
             }))
             .child(account_badge(&initial, color, 18.))
             .child(div().flex_1().min_w_0().truncate().when(here, |d| d.font_weight(FontWeight::MEDIUM)).child(a.short()))
-            .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(rgb(MUTED)).child(unseen.to_string())))
+            .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(pal().muted).child(unseen.to_string())))
     }
 }
 

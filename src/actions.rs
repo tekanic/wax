@@ -504,9 +504,9 @@ impl MailApp {
             .w(px(MENU_WIDTH))
             .py_1p5()
             .rounded_lg()
-            .bg(rgb(0x24242b))
+            .bg(pal().popover)
             .border_1()
-            .border_color(rgb(0x3d3d47))
+            .border_color(pal().border_strong)
             .shadow_lg()
             .flex()
             .flex_col()
@@ -514,14 +514,14 @@ impl MailApp {
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .children(m.lines.iter().enumerate().map(|(i, line)| match line {
-                MenuLine::Sep => div().my_1().h(px(1.)).bg(rgb(0x34343d)).into_any_element(),
+                MenuLine::Sep => div().my_1().h(px(1.)).bg(pal().border).into_any_element(),
                 MenuLine::Heading(text) => div()
                     .px_3()
                     .pt_1()
                     .pb_0p5()
                     .text_xs()
                     .truncate()
-                    .text_color(rgb(MUTED))
+                    .text_color(pal().muted)
                     .child(text.clone())
                     .into_any_element(),
                 MenuLine::Item { action, label, keys, danger } => {
@@ -537,9 +537,9 @@ impl MailApp {
                         .items_center()
                         .justify_between()
                         .cursor_pointer()
-                        .text_color(rgb(if *danger { 0xf0a0a0 } else { TEXT }))
-                        .when(hovered, |d| d.bg(rgb(ACCENT)).text_color(rgb(0xffffff)))
-                        .when(!hovered, |d| d.hover(|d| d.bg(rgb(0x30303a))))
+                        .text_color(if *danger { pal().error } else { pal().text })
+                        .when(hovered, |d| d.bg(pal().accent).text_color(pal().on_accent))
+                        .when(!hovered, |d| d.hover(|d| d.bg(pal().popover_hover)))
                         .on_mouse_move(cx.listener(move |this, _, _, cx| {
                             if let Some(m) = &mut this.row_menu {
                                 if m.hover != Some(i) {
@@ -554,7 +554,7 @@ impl MailApp {
                             div()
                                 .text_xs()
                                 .font_family("Menlo")
-                                .text_color(rgb(if hovered { 0xdbe7ff } else { MUTED }))
+                                .text_color(if hovered { pal().on_accent } else { pal().muted })
                                 .child(*keys),
                         )
                         .into_any_element()
@@ -577,15 +577,15 @@ impl MailApp {
 
     /// What a swipe does: right = read/unread, left = the folder's `e`
     /// action (or delete where `e` means nothing).
-    pub fn swipe_action(&self, dx: f32) -> Option<(MsgAction, &'static str, u32)> {
+    pub fn swipe_action(&self, dx: f32) -> Option<(MsgAction, &'static str, Rgba)> {
         if dx > 0. {
             let unread = self.envelopes.get(self.selected).is_some_and(|e| e.unread);
-            Some((MsgAction::ToggleRead, if unread { "Read" } else { "Unread" }, ACCENT))
+            Some((MsgAction::ToggleRead, if unread { "Read" } else { "Unread" }, pal().accent))
         } else {
             match self.e_action() {
-                Some((MsgAction::Archive, _)) => Some((MsgAction::Archive, "Archive", 0x3f9b62)),
-                Some((a, _)) => Some((a, "Inbox", 0x3f9b62)),
-                None if self.folder() != Folder::Trash => Some((MsgAction::Delete, "Delete", 0xc24848)),
+                Some((MsgAction::Archive, _)) => Some((MsgAction::Archive, "Archive", rgb(0x3f9b62))),
+                Some((a, _)) => Some((a, "Inbox", rgb(0x3f9b62))),
+                None if self.folder() != Folder::Trash => Some((MsgAction::Delete, "Delete", rgb(0xc24848))),
                 None => None,
             }
         }
@@ -667,10 +667,10 @@ impl MailApp {
             .items_center()
             .when(s.dx > 0., |d| d.justify_start())
             .when(s.dx < 0., |d| d.justify_end())
-            .bg(rgb(if armed { color } else { 0x2a2a31 }))
+            .bg(if armed { color } else { pal().button })
             .text_sm()
             .font_weight(FontWeight::SEMIBOLD)
-            .text_color(rgb(if armed { 0xffffff } else { SUBTLE }))
+            .text_color(if armed { rgb(0xffffff) } else { pal().subtle })
             .child(label);
         div()
             .id(("swipe", ix))
@@ -679,7 +679,7 @@ impl MailApp {
             .h(px(ROW_HEIGHT))
             .overflow_hidden()
             .child(reveal)
-            .child(row.relative().left(px(s.dx)).bg(rgb(LIST_BG)))
+            .child(row.relative().left(px(s.dx)).bg(pal().list_bg))
     }
 }
 

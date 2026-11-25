@@ -139,12 +139,12 @@ fn file_chip(name: &str, size: u64) -> Div {
         .gap_2()
         .rounded_md()
         .border_1()
-        .border_color(rgb(BORDER))
-        .bg(rgb(0x202026))
+        .border_color(pal().border)
+        .bg(pal().card)
         .text_xs()
-        .child(svg().path("icons/file.svg").size(px(14.)).flex_none().text_color(rgb(SUBTLE)))
-        .child(div().max_w(px(220.)).truncate().text_color(rgb(TEXT)).child(name.to_string()))
-        .child(div().flex_none().text_color(rgb(MUTED)).child(human_size(size)))
+        .child(svg().path("icons/file.svg").size(px(14.)).flex_none().text_color(pal().subtle))
+        .child(div().max_w(px(220.)).truncate().text_color(pal().text).child(name.to_string()))
+        .child(div().flex_none().text_color(pal().muted).child(human_size(size)))
 }
 
 impl MailApp {
@@ -222,7 +222,7 @@ impl MailApp {
                 file_chip(&a.name, a.size)
                     .id(("att", i))
                     .cursor_pointer()
-                    .hover(|d| d.border_color(rgb(0x3d3d47)).bg(rgb(HOVER)))
+                    .hover(|d| d.border_color(pal().border_strong).bg(pal().hover))
                     .tooltip(|window, cx| Tooltip::new("Open").build(window, cx))
                     .on_click(cx.listener(move |this, _, _, cx| this.fetch_attachment(i, true, cx)))
                     .child(
@@ -233,13 +233,13 @@ impl MailApp {
                             .items_center()
                             .justify_center()
                             .rounded_sm()
-                            .hover(|d| d.bg(rgb(0x3a3a44)))
+                            .hover(|d| d.bg(pal().button))
                             .tooltip(|window, cx| Tooltip::new("Save to Downloads").build(window, cx))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.fetch_attachment(i, false, cx)
                             }))
-                            .child(svg().path("icons/download.svg").size(px(13.)).text_color(rgb(SUBTLE))),
+                            .child(svg().path("icons/download.svg").size(px(13.)).text_color(pal().subtle)),
                     ),
             );
         }
@@ -254,8 +254,8 @@ impl MailApp {
                         .items_center()
                         .gap_2()
                         .text_xs()
-                        .text_color(rgb(MUTED))
-                        .child(svg().path("icons/paperclip.svg").size(px(13.)).text_color(rgb(MUTED)))
+                        .text_color(pal().muted)
+                        .child(svg().path("icons/paperclip.svg").size(px(13.)).text_color(pal().muted))
                         .child(format!(
                             "{} attachment{} · {}",
                             e.attachments.len(),
@@ -267,7 +267,7 @@ impl MailApp {
                                 div()
                                     .id("att-save-all")
                                     .ml_2()
-                                    .text_color(rgb(ACCENT))
+                                    .text_color(pal().accent)
                                     .cursor_pointer()
                                     .hover(|d| d.underline())
                                     .on_click(cx.listener(|this, _, _, cx| this.save_all_attachments(cx)))
@@ -348,9 +348,9 @@ impl MailApp {
                         .items_center()
                         .justify_center()
                         .rounded_sm()
-                        .text_color(rgb(MUTED))
+                        .text_color(pal().muted)
                         .cursor_pointer()
-                        .hover(|d| d.bg(rgb(0x3a3a44)).text_color(rgb(TEXT)))
+                        .hover(|d| d.bg(pal().button).text_color(pal().text))
                         .tooltip(|window, cx| Tooltip::new("Remove").build(window, cx))
                         .on_click(cx.listener(move |this, _, _, cx| this.remove_attachment(i, cx)))
                         .child("×"),
@@ -368,7 +368,7 @@ impl MailApp {
                         .w(px(56.))
                         .flex_none()
                         .pt(px(7.))
-                        .child(svg().path("icons/paperclip.svg").size(px(14.)).text_color(rgb(MUTED))),
+                        .child(svg().path("icons/paperclip.svg").size(px(14.)).text_color(pal().muted)),
                 )
                 .child(row),
         )

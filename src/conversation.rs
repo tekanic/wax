@@ -235,8 +235,8 @@ impl MailApp {
                     .py(px(6.))
                     .rounded_md()
                     .cursor_pointer()
-                    .when(on, |d| d.bg(rgb(SELECTED)))
-                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER))))
+                    .when(on, |d| d.bg(pal().selected))
+                    .when(!on, |d| d.hover(|d| d.bg(pal().hover)))
                     .on_click(cx.listener(move |this, _, _, cx| this.open_in_conversation(i, cx)))
                     .child(
                         div()
@@ -250,12 +250,12 @@ impl MailApp {
                                     .min_w_0()
                                     .truncate()
                                     .font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
-                                    .text_color(rgb(if me { ACCENT } else { TEXT }))
+                                    .text_color(if me { pal().accent } else { pal().text })
                                     .child(who),
                             )
-                            .child(div().flex_none().text_color(rgb(MUTED)).child(e.date.clone())),
+                            .child(div().flex_none().text_color(pal().muted).child(e.date.clone())),
                     )
-                    .when(!e.preview.is_empty(), |d| d.child(div().truncate().text_xs().text_color(rgb(MUTED)).child(e.preview.clone()))),
+                    .when(!e.preview.is_empty(), |d| d.child(div().truncate().text_xs().text_color(pal().muted).child(e.preview.clone()))),
             );
         }
         Some(
@@ -267,7 +267,7 @@ impl MailApp {
                 .flex()
                 .flex_col()
                 .gap_1()
-                .child(div().px_3().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(MUTED)).child(format!("Conversation · {} messages", c.items.len())))
+                .child(div().px_3().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(pal().muted).child(format!("Conversation · {} messages", c.items.len())))
                 .child(div().id("conv-list").max_h(px(220.)).overflow_y_scroll().child(list))
                 .into_any_element(),
         )

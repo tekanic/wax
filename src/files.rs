@@ -145,6 +145,9 @@ pub fn load_settings() -> Option<crate::settings::Settings> {
         sig_new: id("signature_for_new"),
         sig_reply: id("signature_for_replies"),
         conversations: flag("conversations", d.conversations),
+        theme_mode: m.get("theme").map(|v| crate::theme::Mode::parse(v)).unwrap_or(d.theme_mode),
+        theme_light: m.get("light_theme").filter(|v| !v.is_empty()).cloned().unwrap_or(d.theme_light),
+        theme_dark: m.get("dark_theme").filter(|v| !v.is_empty()).cloned().unwrap_or(d.theme_dark),
     })
 }
 
@@ -160,13 +163,21 @@ pub fn save_settings(s: &crate::settings::Settings) -> Result<()> {
          signature_for_new = {}\n\
          signature_for_replies = {}\n\
          # One row per conversation in the message list.\n\
-         conversations = {}\n",
+         conversations = {}\n\
+         # Theme: system (match the Mac), light or dark, and which theme for each.\n\
+         # Any Zed theme works: see ~/.config/wax/themes.\n\
+         theme = \"{}\"\n\
+         light_theme = \"{}\"\n\
+         dark_theme = \"{}\"\n",
         s.mono,
         s.hide_list_when_writing,
         s.blocks_open,
         id(s.sig_new),
         id(s.sig_reply),
         s.conversations,
+        s.theme_mode.as_str(),
+        s.theme_light.replace('"', ""),
+        s.theme_dark.replace('"', ""),
     );
     write_atomic(&settings_file(), text.as_bytes())
 }
