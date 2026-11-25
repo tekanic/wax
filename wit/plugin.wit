@@ -1,11 +1,13 @@
-// Wax plugin interface, v0.3.
+// Wax plugin interface, v0.4.
 //
 // Implemented by the host: manifest, on-message-received, commands /
 // run-command, get-sender-view / on-sender-key, and the host functions
-// log, config, storage, senders, knows-sender and utc-offset. panel is
-// called later; plugins return none for now. message-text and http-get
-// answer "not available yet".
+// log, config, storage, senders, knows-sender, utc-offset, read-message
+// and message-text. panel is called later; plugins return none for now.
+// http-get answers "not available yet".
 //
+// v0.4: read-message (text, links, headers, attachment names) and
+// message-text work, for new mail, under read-bodies.
 // v0.3: commands run (menu of choices, typed text, reader buttons, keys),
 // the `follow-up` action and `snooze-until` are carried out, `utc-offset`.
 // v0.2: sender views (the Sweep), `senders`, `knows-sender`, `file-sender`.
@@ -20,7 +22,7 @@
 // - Everything a plugin may read arrives as arguments or through `host`,
 //   which is permission-checked too.
 
-package wax:plugin@0.3.0;
+package wax:plugin@0.4.0;
 
 interface types {
     record address {
@@ -190,6 +192,24 @@ interface types {
         storage,
     }
 
+    /// A link in a message: what it shows and where it goes.
+    record link {
+        text: string,
+        url: string,
+    }
+
+    /// What a message says, for plugins with `read-bodies`.
+    record message-content {
+        /// Plain text (HTML turned into text).
+        text: string,
+        /// Every <a href> in the HTML part, in order (at most 500).
+        links: list<link>,
+        /// Every header as (name, value), folded lines joined, in order.
+        headers: list<tuple<string, string>>,
+        /// File names of the attachments.
+        attachments: list<string>,
+    }
+
     record manifest {
         id: string,
         name: string,
@@ -202,7 +222,7 @@ interface types {
 
 /// Services the core offers to plugins. Every call is permission-checked.
 interface host {
-    use types.{envelope, sender};
+    use types.{envelope, sender, message-content};
 
     log: func(message: string);
 
@@ -210,8 +230,13 @@ interface host {
     /// No permission needed: it's the plugin's own settings.
     config: func() -> string;
 
-    /// Needs `read-bodies`. Plain text of a message.
+    /// Needs `read-bodies`. Plain text of a message. Works during
+    /// on-message-received, for the messages it's given.
     message-text: func(account: string, mailbox: string, id: string) -> result<string, string>;
+
+    /// Needs `read-bodies`. Text, links, headers and attachment names, as
+    /// message-text. Fetched once per message however often it's asked.
+    read-message: func(account: string, mailbox: string, id: string) -> result<message-content, string>;
 
     /// Needs `network`, and the host must be in the manifest.
     http-get: func(url: string) -> result<string, string>;

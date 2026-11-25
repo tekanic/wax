@@ -23,7 +23,7 @@ mod bindings {
 use bindings::wax;
 /// The generated bindings for one instance.
 type Plugin_ = bindings::Plugin;
-pub use wax::plugin::types::{Action, Address, Command, CommandScope, Envelope, Manifest, Permission, Sender, SenderView, ViewKey};
+pub use wax::plugin::types::{Action, Address, Command, CommandScope, Envelope, Link, Manifest, MessageContent, Permission, Sender, SenderView, ViewKey};
 
 /// wasmtime has its own error type.
 fn w<T>(r: wasmtime::Result<T>) -> Result<T> {
@@ -74,9 +74,13 @@ struct State {
     arrival: Arrival,
 }
 
+type Cache = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<(String, String, String), Result<MessageContent, String>>>>;
+
 /// What `knows-sender` needs about the batch of new mail being handled.
 #[derive(Clone, Default)]
 pub struct Arrival {
+    pub sessions: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, crate::SharedSession>>>,
+    pub contents: Cache,
     /// Your addresses for the account: its own and its From identities.
     pub mine: Vec<String>,
     /// (mailbox, id) of every message in the batch, and their Message-IDs.
@@ -101,8 +105,39 @@ impl wax::plugin::host::Host for State {
     fn config(&mut self) -> String {
         std::fs::read_to_string(self.dir.join("config.toml")).unwrap_or_default()
     }
-    fn message_text(&mut self, _account: String, _mailbox: String, _id: String) -> Result<String, String> {
-        Err("not available yet".into())
+    fn message_text(&mut self, account: String, mailbox: String, id: String) -> Result<String, String> {
+        self.read_message(account, mailbox, id).map(|c| c.text)
+    }
+    fn read_message(&mut self, account: String, mailbox: String, id: String) -> Result<MessageContent, String> {
+        if !self.grants.contains(&Permission::ReadBodies) {
+            return Err("needs read-bodies".into());
+        }
+        if !self.arrival.batch.iter().any(|(m, i)| *m == mailbox && *i == id) {
+            return Err("only messages being handled now can be read".into());
+        }
+        let key = (account.clone(), mailbox.clone(), id.clone());
+        if let Some(hit) = self.arrival.contents.lock().unwrap().get(&key) {
+            return hit.clone();
+        }
+        let session = {
+            let mut sessions = self.arrival.sessions.lock().unwrap();
+            match sessions.get(&account) {
+                Some(s) => Ok(s.clone()),
+                None => crate::mail::Session::connect(&account).map(|s| {
+                    let s = std::sync::Arc::new(std::sync::Mutex::new(s));
+                    sessions.insert(account.clone(), s.clone());
+                    s
+                }),
+            }
+        };
+        let result = session.map_err(|e| format!("{e:#}")).and_then(|s| s.lock().unwrap().content(&mailbox, &id).map_err(|e| format!("{e:#}"))).map(|c| MessageContent {
+            text: c.text.chars().take(200_000).collect(),
+            links: c.links.into_iter().map(|(text, url)| Link { text, url }).collect(),
+            headers: c.headers,
+            attachments: c.attachments,
+        });
+        self.arrival.contents.lock().unwrap().insert(key, result.clone());
+        result
     }
     fn http_get(&mut self, _url: String) -> Result<String, String> {
         Err("not available yet".into())
@@ -650,6 +685,7 @@ mod tests {
             mine: vec![me.into()],
             batch: batch.iter().map(|e| (e.mailbox.clone(), e.id.clone())).collect(),
             batch_mids: batch.iter().filter_map(|e| e.message_id.clone()).collect(),
+            ..Default::default()
         };
         let held = |h: &mut Host, e: &crate::model::Envelope| {
             let date = chrono::DateTime::from_timestamp(e.ts, 0).map(|d| d.to_rfc3339());

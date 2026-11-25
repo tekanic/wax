@@ -865,6 +865,15 @@ impl Session {
         Ok((text, html, files))
     }
 
+    pub fn content(&mut self, mailbox: &str, id: &str) -> Result<Content> {
+        self.retry(|s| s.content_once(mailbox, id))
+    }
+
+    fn content_once(&mut self, mailbox: &str, id: &str) -> Result<Content> {
+        let raw = self.client.get_message(mailbox, id).map_err(|e| anyhow!("{e}"))?;
+        Ok(parse_content(&raw))
+    }
+
     /// The bytes of attachment `index` (as listed by `body`).
     pub fn attachment(&mut self, mailbox: &str, id: &str, index: usize) -> Result<(String, Vec<u8>)> {
         self.retry(|s| s.attachment_once(mailbox, id, index))
@@ -1282,6 +1291,100 @@ fn to_model(mailbox: &str, e: io_email::envelope::types::Envelope) -> Envelope {
 
 /// HTML-to-text until the real renderer lands: keeps paragraphs, lists,
 /// tables and links (as [n] footnotes), drops styles and scripts.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Content {
+    pub headers: Vec<(String, String)>,
+    pub text: String,
+    pub links: Vec<(String, String)>,
+    pub attachments: Vec<String>,
+}
+
+pub fn parse_content(raw: &[u8]) -> Content {
+    let Some(msg) = mail_parser::MessageParser::default().parse(raw) else { return Content::default() };
+    let headers = msg
+        .headers()
+        .iter()
+        .map(|h| {
+            let value = raw.get(h.offset_start() as usize..h.offset_end() as usize).map(|v| String::from_utf8_lossy(v).into_owned()).unwrap_or_default();
+            (h.name().to_string(), value.split_whitespace().collect::<Vec<_>>().join(" "))
+        })
+        .collect();
+    let html = msg.html_part(0).filter(|p| p.is_text_html()).and_then(|_| msg.body_html(0)).map(|h| h.into_owned());
+    let text = match &html {
+        Some(h) => html_to_text(h),
+        None => msg.body_text(0).map(|t| t.trim().to_string()).unwrap_or_default(),
+    };
+    let links = html.as_deref().map(links_in).unwrap_or_default();
+    let attachments = attachment_parts(&msg, html.as_deref()).into_iter().map(|(name, _, _)| name).collect();
+    Content { headers, text, links, attachments }
+}
+
+pub fn links_in(html: &str) -> Vec<(String, String)> {
+    let lower = html.to_ascii_lowercase();
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while let Some(i) = lower[pos..].find("<a") {
+        let start = pos + i;
+        let after = lower[start + 2..].chars().next();
+        if !after.is_some_and(|c| c.is_whitespace()) {
+            pos = start + 2;
+            continue;
+        }
+        let Some(tag_end) = lower[start..].find('>').map(|e| start + e) else { break };
+        let tag = &html[start..tag_end];
+        let href = attr(tag, "href").unwrap_or_default();
+        let close = lower[tag_end..].find("</a").map(|e| tag_end + e).unwrap_or(html.len());
+        let inner = &html[tag_end + 1..close.max(tag_end + 1)];
+        let text = decode_entities(&strip_tags(inner)).split_whitespace().collect::<Vec<_>>().join(" ");
+        if !href.is_empty() {
+            out.push((text, decode_entities(&href)));
+        }
+        pos = close.max(tag_end + 1);
+        if out.len() >= 500 {
+            break;
+        }
+    }
+    out
+}
+
+fn attr(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(i) = lower[from..].find(name) {
+        let at = from + i;
+        let before = lower[..at].chars().last();
+        let rest = lower[at + name.len()..].trim_start();
+        if before.is_some_and(|c| c.is_whitespace()) && rest.starts_with('=') {
+            let off = tag.len() - rest.len() + 1;
+            let v = tag[off..].trim_start();
+            return Some(match v.chars().next() {
+                Some(q @ ('"' | '\'')) => v[1..].split(q).next().unwrap_or("").to_string(),
+                _ => v.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or("").to_string(),
+            });
+        }
+        from = at + name.len();
+    }
+    None
+}
+
+fn strip_tags(s: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for c in s.chars() {
+        match c {
+            '<' => inside = true,
+            '>' => inside = false,
+            c if !inside => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+fn decode_entities(s: &str) -> String {
+    s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
+}
+
 fn html_to_text(html: &str) -> String {
     html2text::from_read(html.as_bytes(), 100)
         .unwrap_or_else(|_| "(could not render HTML)".into())
@@ -1385,5 +1488,22 @@ mod label_tests {
         let reply = format!("* 1 FETCH (UID 5 BODY[HEADER.FIELDS (FROM SUBJECT)] {{{}}}\r\n{headers})\r\n", headers.len());
         let list = parse_header_fetch("INBOX", reply.as_bytes());
         assert_eq!(list[0].subject.as_ref(), "Re: Ledger \u{2192} LIMS testing");
+    }
+
+    #[test]
+    fn finds_links_and_headers() {
+        let html = r#"<p>Hi <A class="x" HREF="https://evil.example/login?a=1&amp;b=2">https://www.paypal.com/signin</A> and <a href='mailto:x@y.z'><b>mail</b> us</a><abbr>no</abbr></p>"#;
+        assert_eq!(
+            super::links_in(html),
+            [
+                ("https://www.paypal.com/signin".to_string(), "https://evil.example/login?a=1&b=2".to_string()),
+                ("mail us".to_string(), "mailto:x@y.z".to_string()),
+            ]
+        );
+        let raw = "From: A <a@x.com>\r\nReply-To: b@y.com\r\nAuthentication-Results: mx.google.com;\r\n dmarc=fail\r\nSubject: Hi\r\nContent-Type: text/html\r\n\r\n<a href=\"http://1.2.3.4/x\">here</a>";
+        let c = super::parse_content(raw.as_bytes());
+        assert!(c.headers.contains(&("Reply-To".to_string(), "b@y.com".to_string())), "{:?}", c.headers);
+        assert!(c.headers.iter().any(|(k, v)| k == "Authentication-Results" && v == "mx.google.com; dmarc=fail"), "{:?}", c.headers);
+        assert_eq!(c.links, [("here".to_string(), "http://1.2.3.4/x".to_string())]);
     }
 }

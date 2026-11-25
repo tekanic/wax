@@ -23,7 +23,7 @@ pub const BRANDS: &[(&str, &[&str])] = &[
     ("paypal", &["paypal.com"]),
     ("apple", &["apple.com", "icloud.com", "itunes.com", "mac.com"]),
     ("icloud", &["apple.com", "icloud.com"]),
-    ("microsoft", &["microsoft.com", "microsoftonline.com", "outlook.com", "live.com", "office.com", "office365.com", "sharepoint.com", "onedrive.com", "microsoft365.com", "skype.com", "xbox.com", "azure.com", "bing.com", "msn.com", "linkedin.com", "github.com"]),
+    ("microsoft", &["microsoft.com", "microsoftonline.com", "outlook.com", "live.com", "office.com", "office365.com", "sharepoint.com", "onedrive.com", "microsoft365.com", "microsoftadvertising.com", "skype.com", "xbox.com", "azure.com", "bing.com", "msn.com", "linkedin.com", "github.com"]),
     ("office 365", &["microsoft.com", "office.com", "office365.com", "microsoftonline.com"]),
     ("outlook", &["microsoft.com", "outlook.com", "live.com"]),
     ("amazon", &["amazon.com", "amazon.co.uk", "amazon.ca", "amazonses.com", "amazonaws.com", "aws.com", "audible.com", "primevideo.com", "amazon.jobs"]),
@@ -243,6 +243,128 @@ fn title(s: &str) -> String {
     }).collect::<Vec<_>>().join(" ")
 }
 
+pub struct Body<'a> {
+    pub text: &'a str,
+    pub links: &'a [(String, String)],
+    pub headers: &'a [(String, String)],
+    pub attachments: &'a [String],
+}
+
+const PROGRAMS: [&str; 14] = ["exe", "scr", "js", "jse", "vbs", "vbe", "bat", "cmd", "msi", "iso", "img", "jar", "hta", "lnk"];
+const PAGES: [&str; 5] = ["htm", "html", "shtml", "svg", "xhtml"];
+
+fn header<'a>(headers: &'a [(String, String)], name: &str) -> impl Iterator<Item = &'a str> {
+    let name = name.to_lowercase();
+    headers.iter().filter(move |(k, _)| k.to_lowercase() == name).map(|(_, v)| v.as_str())
+}
+
+pub fn host(url: &str) -> Option<String> {
+    let rest = url.trim().split_once("://").filter(|(scheme, _)| matches!(scheme.to_lowercase().as_str(), "http" | "https"))?.1;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?;
+    let host = if host.starts_with('[') { host.split(']').next()?.trim_start_matches('[') } else { host.split(':').next()? };
+    let host = host.trim_end_matches('.').to_lowercase();
+    (!host.is_empty()).then_some(host)
+}
+
+fn shown_domain(text: &str) -> Option<String> {
+    let t = text.trim().trim_end_matches(['/', '.']).to_lowercase();
+    if t.is_empty() || t.contains(char::is_whitespace) || !t.contains('.') {
+        return None;
+    }
+    let with_scheme = if t.contains("://") { t } else { format!("https://{t}") };
+    host(&with_scheme).filter(|h| h.contains('.') && h.rsplit('.').next().is_some_and(|tld| tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic())))
+}
+
+fn is_ip(host: &str) -> bool {
+    host.parse::<std::net::IpAddr>().is_ok()
+}
+
+pub fn check_body(m: &Mail, b: &Body, contacts: &[Contact], settings: &Settings, subject_pressure: bool) -> Verdict {
+    let mut v = Verdict { score: 0, reasons: Vec::new() };
+    let mut add = |n: u32, why: String| {
+        v.score += n;
+        v.reasons.push(why);
+    };
+    let dom = domain(m.email);
+    if dom.is_empty() || settings.trust.iter().any(|t| belongs(&dom, t)) {
+        return v;
+    }
+    let site = base(&dom);
+    if let Some(auth) = header(b.headers, "authentication-results").find(|a| a.to_lowercase().contains("mx.google.com")) {
+        let a = auth.to_lowercase();
+        if a.contains("dmarc=fail") {
+            add(3, format!("Gmail couldn't confirm it really came from {dom} (DMARC failed)"));
+        } else if (a.contains("spf=fail") || a.contains("dkim=fail")) && !a.contains("dkim=pass") {
+            add(1, format!("Gmail couldn't fully check it came from {dom}"));
+        }
+    }
+    if let Some(reply) = header(b.headers, "reply-to").next() {
+        let rd = domain(reply.split(',').next().unwrap_or(reply));
+        let rb = base(&rd);
+        if !rd.is_empty() && rb != site {
+            if PUBLIC.contains(&rb.as_str()) && !PUBLIC.contains(&site.as_str()) {
+                add(2, format!("replies go to a personal {rb} address, not {dom}"));
+            } else {
+                add(1, format!("replies go to {rd}, not {dom}"));
+            }
+        }
+    }
+    let brands = all_brands(settings);
+    let known: Vec<String> = contacts
+        .iter()
+        .map(|c| base(&domain(&c.email)))
+        .filter(|d| !d.is_empty() && !PUBLIC.contains(&d.as_str()))
+        .collect();
+    let protected = |d: &str| brands.iter().any(|(_, ds)| ds.iter().any(|x| belongs(d, x))) || known.iter().any(|k| belongs(d, k));
+    let (mut mismatch, mut ip, mut look) = (false, false, false);
+    for (text, url) in b.links {
+        let Some(h) = host(url) else { continue };
+        let hb = base(&h);
+        if !ip && is_ip(&h) {
+            ip = true;
+            add(2, format!("a link goes to a bare internet address ({h})"));
+        }
+        if !mismatch {
+            if let Some(shown) = shown_domain(text) {
+                let sb = base(&shown);
+                if sb != hb && sb != site && protected(&shown) && !protected(&h) {
+                    mismatch = true;
+                    add(3, format!("a link shows {shown} but goes to {h}"));
+                }
+            }
+        }
+        if !look && !is_ip(&h) {
+            let like = brands.iter().find(|(_, ds)| !ds.iter().any(|d| belongs(&h, d)) && ds.iter().any(|d| lookalike(&hb, &base(d))));
+            if let Some((brand, ds)) = like {
+                look = true;
+                add(3, format!("a link goes to {h}, which looks like {}'s {}", title(brand), base(&ds[0])));
+            } else if let Some(k) = known.iter().find(|k| hb != **k && lookalike(&hb, k)) {
+                look = true;
+                add(3, format!("a link goes to {h}, which looks like {k}"));
+            }
+        }
+    }
+    let ext = |name: &str| name.rsplit_once('.').map(|(_, e)| e.trim().to_lowercase()).unwrap_or_default();
+    if let Some(f) = b.attachments.iter().find(|f| PROGRAMS.contains(&ext(f).as_str())) {
+        add(3, format!("it attaches a program ({f})"));
+    } else if let Some(f) = b.attachments.iter().find(|f| PAGES.contains(&ext(f).as_str())) {
+        add(2, format!("it attaches a web page ({f})"));
+    }
+    if !subject_pressure {
+        let text = b.text.to_lowercase();
+        if let Some((phrase, _)) = PRESSURE.iter().filter(|(_, n)| *n >= 2).find(|(p, _)| text.contains(p)) {
+            add(1, format!("the message pushes you to act (\u{201c}{phrase}\u{201d})"));
+        }
+    }
+    v
+}
+
+pub fn subject_pressure(subject: &str) -> bool {
+    let s = subject.to_lowercase();
+    PRESSURE.iter().any(|(p, _)| s.contains(p))
+}
+
 pub fn check(m: &Mail, contacts: &[Contact], settings: &Settings) -> Verdict {
     let mut v = Verdict { score: 0, reasons: Vec::new() };
     let mut add = |n: u32, why: String| {
@@ -316,6 +438,48 @@ pub fn check(m: &Mail, contacts: &[Contact], settings: &Settings) -> Verdict {
 mod tests {
     use super::*;
 
+    fn body(m: (&str, &str), links: &[(&str, &str)], headers: &[(&str, &str)], files: &[&str], text: &str) -> Verdict {
+        let links: Vec<(String, String)> = links.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        let headers: Vec<(String, String)> = headers.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        let files: Vec<String> = files.iter().map(|f| f.to_string()).collect();
+        let contacts = vec![Contact { name: "Dana Smith".into(), email: "dsmith@emco.com".into() }];
+        check_body(
+            &Mail { name: m.0, email: m.1, subject: "" },
+            &Body { text, links: &links, headers: &headers, attachments: &files },
+            &contacts,
+            &settings(""),
+            false,
+        )
+    }
+
+    #[test]
+    fn content_signals() {
+        let s = |v: Verdict| v.score;
+        let shop = ("Shop", "news@shop.example");
+        assert_eq!(s(body(shop, &[("https://www.paypal.com/signin", "https://evil.example/x")], &[], &[], "")), 3);
+        assert_eq!(s(body(shop, &[("www.emco.com", "http://emco-results.example/x")], &[], &[], "")), 3);
+        assert_eq!(s(body(shop, &[("Shop now", "https://click.esp.example/r?u=1"), ("www.shop.example", "https://click.esp.example/r?u=2")], &[], &[], "")), 0);
+        assert_eq!(s(body(shop, &[("www.nytimes.com", "https://substack.com/redirect/1")], &[], &[], "")), 0);
+        assert_eq!(s(body(shop, &[("www.paypal.com", "https://www.paypal.com/x")], &[], &[], "")), 0);
+        assert_eq!(s(body(shop, &[("Sign in", "https://paypa1.com/login")], &[], &[], "")), 3);
+        assert_eq!(s(body(shop, &[("Results", "https://ernco.com/r")], &[], &[], "")), 3);
+        assert_eq!(s(body(shop, &[("here", "http://185.12.4.9/a")], &[], &[], "")), 2);
+        assert_eq!(s(body(shop, &[], &[("Authentication-Results", "mx.google.com; dkim=pass; spf=pass; dmarc=fail (p=REJECT)")], &[], "")), 3);
+        assert_eq!(s(body(shop, &[], &[("Authentication-Results", "mx.google.com; dkim=pass header.i=@shop.example; spf=softfail; dmarc=pass")], &[], "")), 0);
+        assert_eq!(s(body(shop, &[], &[("Authentication-Results", "mx.google.com; spf=fail; dmarc=none")], &[], "")), 1);
+        assert_eq!(s(body(shop, &[], &[("Reply-To", "Boss <boss.urgent@gmail.com>")], &[], "")), 2);
+        assert_eq!(s(body(shop, &[], &[("Reply-To", "reply@shop-esp.example")], &[], "")), 1);
+        assert_eq!(s(body(shop, &[], &[("Reply-To", "help@mail.shop.example")], &[], "")), 0);
+        assert_eq!(s(body(shop, &[], &[], &["Invoice.pdf.exe"], "")), 3);
+        assert_eq!(s(body(shop, &[], &[], &["Remittance.HTML"], "")), 2);
+        assert_eq!(s(body(shop, &[], &[], &["report.pdf"], "Please verify your account today")), 1);
+        assert_eq!(host("https://user@Login.Example.com:8443/a?b"), Some("login.example.com".into()));
+        assert_eq!(host("mailto:x@y.z"), None);
+        assert_eq!(shown_domain("https://www.paypal.com/signin"), Some("www.paypal.com".into()));
+        assert_eq!(shown_domain("Click here"), None);
+        assert_eq!(shown_domain("v1.2"), None);
+    }
+
     fn run(name: &str, email: &str, subject: &str) -> Verdict {
         let contacts = vec![
             Contact { name: "Dana Smith".into(), email: "dsmith@emco.com".into() },
@@ -365,6 +529,7 @@ mod tests {
             ("Pal", "someone@gmail.com", "hi"),
             ("Corner Shop", "cornershop@ymail.com", "T1"),
             ("QuickBooks for Mac", "IntuitNotices@e.intuit.com", "Urgent Notice"),
+            ("Microsoft Advertising", "noreply@microsoftadvertising.com", "[REGISTER NOW] AI readiness"),
             ("Amazon Web Services", "health@aws.com", "Action may be required"),
             ("Google Fitbit", "noreply@e.fitbit.com", "Fitbit Air is here"),
         ] {
@@ -395,4 +560,5 @@ mod tests {
         assert_eq!(settings("").label, "Suspicious");
     }
 }
+
 

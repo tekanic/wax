@@ -3679,6 +3679,30 @@ fn main() {
     }
     let acct = crate::accounts::first_email();
     let args: Vec<String> = std::env::args().collect();
+    if let Some(pos) = args.iter().position(|a| a == "--content-sample") {
+        let (account, mailbox, n) = (&args[pos + 1], &args[pos + 2], args.get(pos + 3).and_then(|n| n.parse::<u32>().ok()).unwrap_or(50));
+        let result = Session::connect(account).and_then(|mut s| {
+            for e in s.envelopes(mailbox, n)? {
+                let c = s.content(&e.mailbox, &e.id)?;
+                let headers: Vec<(String, String)> = c
+                    .headers
+                    .into_iter()
+                    .filter(|(k, _)| k.eq_ignore_ascii_case("authentication-results") || k.eq_ignore_ascii_case("reply-to"))
+                    .collect();
+                let line = serde_json::json!({
+                    "account": account, "mailbox": mailbox, "name": e.from.to_string(), "email": e.from_email.to_string(),
+                    "subject": e.subject.to_string(), "links": c.links, "headers": headers, "attachments": c.attachments,
+                    "text": c.text.chars().take(4000).collect::<String>(),
+                });
+                println!("{line}");
+            }
+            anyhow::Ok(())
+        });
+        if let Err(e) = result {
+            eprintln!("failed: {e:#}");
+        }
+        return;
+    }
     if let Some(pos) = args.iter().position(|a| a == "--search") {
         let query = args[pos + 1..].join(" ");
         let started = std::time::Instant::now();

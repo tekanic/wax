@@ -2,8 +2,8 @@ wit_bindgen::generate!({ world: "plugin", path: "../../wit/plugin.wit" });
 
 mod check;
 
-use check::{Contact, Mail, THRESHOLD};
-use wax::plugin::host::{config, knows_sender, senders};
+use check::{Body, Contact, Mail, THRESHOLD};
+use wax::plugin::host::{config, knows_sender, read_message, senders};
 use wax::plugin::types::Permission;
 
 struct Phishing;
@@ -14,7 +14,7 @@ impl Guest for Phishing {
             id: "phishing".into(),
             name: "Phishing warnings".into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            permissions: vec![Permission::ReadEnvelopes, Permission::ModifyMail],
+            permissions: vec![Permission::ReadEnvelopes, Permission::ReadBodies, Permission::ModifyMail],
             network_hosts: vec![],
         }
     }
@@ -31,7 +31,15 @@ impl Guest for Phishing {
             .map(|s| Contact { name: s.name, email: s.email })
             .collect();
         let name = from.name.clone().unwrap_or_default();
-        let v = check::check(&Mail { name: &name, email: &from.email, subject: &m.subject }, &contacts, &settings);
+        let mail = Mail { name: &name, email: &from.email, subject: &m.subject };
+        let mut v = check::check(&mail, &contacts, &settings);
+        if let Ok(c) = read_message(&m.account, &m.mailbox, &m.id) {
+            let links: Vec<(String, String)> = c.links.into_iter().map(|l| (l.text, l.url)).collect();
+            let b = Body { text: &c.text, links: &links, headers: &c.headers, attachments: &c.attachments };
+            let more = check::check_body(&mail, &b, &contacts, &settings, check::subject_pressure(&m.subject));
+            v.score += more.score;
+            v.reasons.extend(more.reasons);
+        }
         if v.score < THRESHOLD {
             return Vec::new();
         }

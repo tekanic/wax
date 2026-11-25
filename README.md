@@ -133,7 +133,7 @@ a Filter rule) never flashes into the Inbox or sets off a notification.
 
 The plugins live in
 `~/.config/wax/plugins/<id>/plugin.wasm` (interface: `wit/plugin.wit`,
-`wax:plugin@0.3.0`). Each call runs on a fresh instance with no files, no
+`wax:plugin@0.4.0`). Each call runs on a fresh instance with no files, no
 network, 64 MB of memory and a fuel limit, so a plugin that loops or runs away
 is stopped and switched off. A new plugin starts off; Settings → Plugins shows
 what it asks for and switches it on, which writes its `grants.toml`. Actions
@@ -165,9 +165,13 @@ from a domain that isn't theirs, a lookalike of a brand's or a correspondent's
 domain (paypa1.com, ernco.com), a brand's name inside a stranger's domain, an
 address shown in the name that isn't the sender's, a punycode domain, or a
 contact's name from a new domain plus pressure wording ("quick favor", "gift
-card", "bank details"). Its `config.toml` sets the label, trusted domains and
-extra brands to protect. On 1,684 past messages from one-time senders it flagged
-2, both reasonable.
+card", "bank details"). With `read-bodies` it also reads the message: Gmail's
+DMARC/SPF/DKIM verdict, a Reply-To pointing elsewhere, links that show a brand's
+or contact's site but go somewhere else, links to lookalike domains or bare IP
+addresses, and program or web-page attachments. Its `config.toml` sets the label,
+trusted domains and extra brands to protect. On 1,684 past messages from
+one-time senders it flagged 2, both reasonable; on 315 recent messages it flagged
+none of the Inbox and 32 of 135 in Spam (mostly forged senders).
 
 **Filter rules** (`plugins/filter-rules`) acts on new mail, one rule per line:
 

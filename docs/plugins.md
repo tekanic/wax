@@ -4,12 +4,12 @@ Wax keeps its core small. Features like the Sweep and Filter rules are plugins:
 WebAssembly components that Wax runs in a sandbox. This guide takes you from an
 empty folder to a working plugin, then covers the whole interface.
 
-- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.3.0`
+- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.4.0`
 - Host: [`src/wasm_host.rs`](../src/wasm_host.rs)
 - Examples: [`plugins/sweep`](../plugins/sweep) (a sender view),
   [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail),
   [`plugins/snooze`](../plugins/snooze) (commands with a menu of choices),
-  [`plugins/phishing`](../plugins/phishing) (scores new mail using `knows-sender` and `senders`)
+  [`plugins/phishing`](../plugins/phishing) (scores new mail using `knows-sender`, `senders` and `read-message`)
 
 ## How plugins work
 
@@ -179,7 +179,7 @@ account was switched on in storage.
 | `read-envelopes` | Get messages' senders, recipients, subjects, flags; call `senders` | Works |
 | `modify-mail` | Return label, move, archive, read, star and file-sender actions | Works |
 | `storage` | Use `storage-get` and `storage-set` | Works |
-| `read-bodies` | Call `message-text` | Answers "not available yet" |
+| `read-bodies` | Call `read-message` and `message-text` for the new mail being handled | Works |
 | `network` | Call `http-get` for hosts in `network-hosts` | Answers "not available yet" |
 | `compose` | Return `open-draft` | Not carried out yet |
 
@@ -214,7 +214,8 @@ All live in `wax::plugin::host`.
 | `senders(account, limit)` | Senders by volume from the local cache, with their rule | `read-envelopes` |
 | `knows-sender(message)` | Whether you know its sender: your own address, a colleague at your work domain, someone you've written to, someone with a sender rule, or other mail from them (not the Lobby, Spam, Trash or this batch) | `read-envelopes` |
 | `storage-get(key)`, `storage-set(key, value)` | Your key-value store | `storage` |
-| `message-text(...)` | Message text | Not yet |
+| `read-message(account, mailbox, id)` | The message's text, links (shown text and URL), headers and attachment names; fetched once per message. Only for messages `on-message-received` is handling | `read-bodies` |
+| `message-text(account, mailbox, id)` | Just the text, as above | `read-bodies` |
 | `http-get(url)` | HTTPS GET | Not yet |
 
 `config.toml` is yours to define; Wax doesn't parse it. The built-in plugins use
@@ -317,10 +318,12 @@ scripts/build-plugins.sh sweep && cargo test wasm_host
 
 ## Versions
 
-The interface is versioned (`wax:plugin@0.3.0`) and still changing: a plugin
+The interface is versioned (`wax:plugin@0.4.0`) and still changing: a plugin
 built against one version won't load in a Wax built with another. When it
 changes, rebuild against the new `wit/plugin.wit`.
 
+- **v0.4** added `read-message` (text, links, headers, attachments) and made
+  `message-text` work, both under `read-bodies`.
 - **v0.3** made commands run (keys, reader buttons, menus with choices and
   typed text), added `follow-up`, carried out `snooze-until`, added `utc-offset`,
   and gave `run-command` a `choice`.

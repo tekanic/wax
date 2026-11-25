@@ -235,13 +235,15 @@ impl MailApp {
             return self.show_arrivals(account, kept, cx);
         }
         let mine: Vec<String> = std::iter::once(account.to_string()).chain(self.identities_for(account).into_iter().map(|i| i.email)).collect();
+        let active = *self.account == *account;
+        let session = if active { self.preview_session.clone().or_else(|| self.session.clone()) } else { None };
         let arrival = wasm_host::Arrival {
             mine,
             batch: kept.iter().map(|e| (e.mailbox.clone(), e.id.clone())).collect(),
             batch_mids: kept.iter().filter_map(|e| e.message_id.clone()).collect(),
+            sessions: Arc::new(Mutex::new(session.iter().map(|s| (account.to_string(), s.clone())).collect())),
+            contents: Default::default(),
         };
-        let active = *self.account == *account;
-        let session = if active { self.preview_session.clone().or_else(|| self.session.clone()) } else { None };
         let (store, acct) = (self.store.clone(), account.to_string());
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             // Mail that arrives while the plugins are still loading waits
