@@ -256,6 +256,24 @@ impl Session {
         Ok(())
     }
 
+    pub fn uids_by_message_id(&mut self, mailbox: &str, message_id: &str) -> Result<Vec<String>> {
+        self.retry(|s| s.uids_by_message_id_once(mailbox, message_id))
+    }
+
+    fn uids_by_message_id_once(&mut self, mailbox: &str, message_id: &str) -> Result<Vec<String>> {
+        let id = message_id.trim().trim_start_matches('<').trim_end_matches('>');
+        if id.is_empty() || id.contains(['"', '\\', '\r', '\n']) {
+            return Ok(Vec::new());
+        }
+        let found = self.raw(&[format!("EXAMINE {}", imap_quote(mailbox)), format!("UID SEARCH X-GM-RAW {}", imap_quote(&format!("rfc822msgid:{id}")))])?;
+        let text = String::from_utf8_lossy(&found);
+        Ok(text
+            .lines()
+            .filter_map(|l| l.strip_prefix("* SEARCH"))
+            .flat_map(|rest| rest.split_whitespace().map(str::to_string).collect::<Vec<_>>())
+            .collect())
+    }
+
     /// A conversation's messages from All Mail (your replies included),
     /// headers only, newest `limit`.
     pub fn thread(&mut self, thread: &str, limit: usize) -> Result<Vec<Envelope>> {

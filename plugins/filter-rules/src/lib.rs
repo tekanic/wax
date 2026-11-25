@@ -146,7 +146,7 @@ impl Guest for FilterRules {
         Vec::new()
     }
 
-    fn run_command(_id: String, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
+    fn run_command(_id: String, _choice: Option<String>, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
         Err("Filter rules has no commands".into())
     }
 

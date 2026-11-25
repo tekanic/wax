@@ -33,6 +33,10 @@ actions!(
         SendMessage,
         CloseCompose,
         SaveDraft,
+        ChoiceNext,
+        ChoicePrev,
+        ChoiceAccept,
+        CloseChoices,
         DiscardCompose,
         UndoSend,
         SuggestNext,
@@ -110,6 +114,8 @@ pub enum Mode {
     Body,
     /// The label picker (`l`).
     Labels,
+    /// A plugin command's menu (Snooze, Remind if no reply).
+    Choices,
     /// Typing a label name in Settings → Labels.
     LabelEdit,
     /// Anywhere in the window.
@@ -117,7 +123,7 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub const ALL: [Mode; 13] = [
+    pub const ALL: [Mode; 14] = [
         Mode::List,
         Mode::Go,
         Mode::Search,
@@ -125,6 +131,7 @@ impl Mode {
         Mode::Body,
         Mode::Recipients,
         Mode::Labels,
+        Mode::Choices,
         Mode::LabelEdit,
         Mode::Sweep,
         Mode::Menu,
@@ -147,6 +154,7 @@ impl Mode {
             Mode::Settings => "settings",
             Mode::Body => "body",
             Mode::Labels => "labels",
+            Mode::Choices => "choices",
             Mode::LabelEdit => "label_edit",
             Mode::Global => "global",
         }
@@ -165,6 +173,7 @@ impl Mode {
             Mode::Settings => "in Settings",
             Mode::Body => "inside the message text",
             Mode::Labels => "in the label picker (l)",
+            Mode::Choices => "in a command's menu (z snooze, w remind if no reply)",
             Mode::LabelEdit => "typing a label name in Settings",
             Mode::Global => "anywhere in the window",
         }
@@ -176,8 +185,8 @@ impl Mode {
             // ... nor while a menu is open (it has its own keys).
             // ... and never behind Settings, the Sweep or the composer, where
             // a stray letter would act on a message you can't see.
-            Mode::List => Some("MailApp && !Input && !RowMenu && !Settings && !Sweep && !Composer && !LabelPicker"),
-            Mode::Go => Some("MailApp && !Input && !RowMenu && !Settings && !Composer && !LabelPicker"),
+            Mode::List => Some("MailApp && !Input && !RowMenu && !Settings && !Sweep && !Composer && !LabelPicker && !ChoiceMenu"),
+            Mode::Go => Some("MailApp && !Input && !RowMenu && !Settings && !Composer && !LabelPicker && !ChoiceMenu"),
             Mode::Search => Some("SearchBox > Input"),
             Mode::Writing => Some("Composer"),
             Mode::Recipients => Some("Recipients > Input"),
@@ -187,6 +196,7 @@ impl Mode {
             Mode::Settings => Some("Settings"),
             Mode::Body => Some("ComposeBody > Input"),
             Mode::Labels => Some("LabelPicker > Input"),
+            Mode::Choices => Some("ChoiceMenu > Input"),
             Mode::LabelEdit => Some("LabelRename > Input"),
             Mode::Global => None,
         }
@@ -513,6 +523,10 @@ fn defaults() -> (Vec<Def>, Vec<Hint>) {
         .bind("enter", LabelAccept, Labels, Some(("⏎", "add / remove")))
         .bind("shift-enter", LabelAcceptArchive, Labels, Some(("⇧⏎", "label & archive")))
         .bind("escape", CloseLabels, Labels, Some(("esc", "close")))
+        .bind("down", ChoiceNext, Choices, Some(("↑↓", "choose")))
+        .bind("up", ChoicePrev, Choices, None)
+        .bind("enter", ChoiceAccept, Choices, Some(("⏎", "pick")))
+        .bind("escape", CloseChoices, Choices, Some(("esc", "close")))
         .bind("enter", LabelAccept, LabelEdit, None)
         // Send countdown
         .bind("escape", UndoSend, Countdown, Some(("esc", "cancel")))

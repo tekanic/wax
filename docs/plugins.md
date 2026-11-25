@@ -4,10 +4,11 @@ Wax keeps its core small. Features like the Sweep and Filter rules are plugins:
 WebAssembly components that Wax runs in a sandbox. This guide takes you from an
 empty folder to a working plugin, then covers the whole interface.
 
-- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.2.0`
+- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.3.0`
 - Host: [`src/wasm_host.rs`](../src/wasm_host.rs)
 - Examples: [`plugins/sweep`](../plugins/sweep) (a sender view),
-  [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail)
+  [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail),
+  [`plugins/snooze`](../plugins/snooze) (commands with a menu of choices)
 
 ## How plugins work
 
@@ -91,7 +92,7 @@ impl Guest for Urgent {
 
     // The rest of the world. Return "nothing" for the parts you don't use.
     fn commands() -> Vec<Command> { vec![] }
-    fn run_command(_id: String, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
+    fn run_command(_id: String, _choice: Option<String>, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
         Err("no commands".into())
     }
     fn panel() -> Option<Panel> { None }
@@ -152,7 +153,9 @@ you learn in storage (`storage-get` and `storage-set`).
 | `on-message-received` | Each new Inbox message that sender rules didn't file, **before** it's shown or announced | `read-envelopes` |
 | `get-sender-view` | When you open the Sweep (`g w`); the first running plugin that returns a view wins | `read-envelopes` |
 | `on-sender-key` | When you press one of your view's keys on a sender row | `read-envelopes` |
-| `commands`, `run-command`, `panel` | Not called yet; return empty values | — |
+| `commands` | At load, and each time one of your commands' menus opens (so choices can show current times) | — |
+| `run-command` | When you press a command's key in the list, click its reader button, or pick from its menu | — |
+| `panel` | Not called yet; return `None` | — |
 
 The `envelope` a plugin gets has the sender, subject, date and flags, plus
 `to` (To and Cc recipients) and `labels` (Gmail's labels for the message; system
@@ -194,7 +197,8 @@ action you weren't granted is refused and reported.
 | `star(bool)` | Star or unstar | Works |
 | `notify(text)` | Shows text in the status bar (needs no permission) | Works |
 | `file-sender(decision)` | Files all of a sender's mail, past and future (sender views only) | Works |
-| `snooze-until(time)` | Hide until a time | Not yet |
+| `snooze-until(time)` | From a command: out of the Inbox under a Snoozed label until the RFC 3339 time, then back unread | Works |
+| `follow-up(time)` | From a command: at the time, back to the Inbox unless someone else wrote in the thread since | Works |
 | `open-draft(draft)` | Open a prefilled draft | Not yet |
 
 ## Host functions
@@ -205,6 +209,7 @@ All live in `wax::plugin::host`.
 |---|---|---|
 | `log(text)` | Reports a line in the status bar and in Settings → Problems (at most 20 per call) | — |
 | `config()` | Your `config.toml` as text, or `""` | — |
+| `utc-offset()` | Seconds east of UTC on this Mac now, for local times | — |
 | `senders(account, limit)` | Senders by volume from the local cache, with their rule | `read-envelopes` |
 | `knows-sender(message)` | Whether you know its sender: your own address, a colleague at your work domain, someone you've written to, someone with a sender rule, or other mail from them (not the Lobby, Spam, Trash or this batch) | `read-envelopes` |
 | `storage-get(key)`, `storage-set(key, value)` | Your key-value store | `storage` |
@@ -214,6 +219,34 @@ All live in `wax::plugin::host`.
 `config.toml` is yours to define; Wax doesn't parse it. The built-in plugins use
 one setting per line with `#` comments. That's a good habit: people edit these
 files by hand.
+
+## Commands
+
+A command acts on the selected message. Wax offers it as a key in the message
+list and, with `in-message-toolbar`, a button in the reader.
+
+```rust
+Command {
+    id: "snooze".into(),
+    title: "Snooze".into(),
+    keybinding: Some("z".into()),
+    in_message_toolbar: true,
+    scope: CommandScope::Any,
+    choices: vec![CommandChoice { id: "tomorrow".into(), title: "Tomorrow".into(), detail: "Thu 8 AM".into() }],
+    text_hint: Some("or type a time: fri 9am".into()),
+}
+```
+
+- **Keys** are one letter, optionally `shift-`. Pick one Wax doesn't use (`z`
+  and `w` are the Snooze plugin's). Keys Wax already binds win.
+- **Scope** limits it to messages you sent (`sent`), received (`received`) or
+  any.
+- **Choices** and **text-hint**: when either is set, running the command opens
+  a menu. Picking a choice calls `run-command` with its id; typing and pressing
+  Enter sends `"text:<what was typed>"`. With neither, it runs straight away.
+- `run-command` gets the message being read. Its actions apply to the whole
+  conversation when you ran it from a list row, or just that message when you
+  picked one in the conversation strip.
 
 ## Sender views
 
@@ -283,10 +316,13 @@ scripts/build-plugins.sh sweep && cargo test wasm_host
 
 ## Versions
 
-The interface is versioned (`wax:plugin@0.2.0`) and still changing: a plugin
+The interface is versioned (`wax:plugin@0.3.0`) and still changing: a plugin
 built against one version won't load in a Wax built with another. When it
 changes, rebuild against the new `wit/plugin.wit`.
 
+- **v0.3** made commands run (keys, reader buttons, menus with choices and
+  typed text), added `follow-up`, carried out `snooze-until`, added `utc-offset`,
+  and gave `run-command` a `choice`.
 - **v0.2** added sender views, `senders`, `knows-sender` and `file-sender`, and
   moved `on-message-received` ahead of showing new mail.
 - **v0.1** was the first release.

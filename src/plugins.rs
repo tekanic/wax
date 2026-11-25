@@ -151,7 +151,7 @@ impl MailApp {
 }
 
 /// The plugin interface's view of a message.
-fn to_wit(account: &str, e: &Envelope) -> wasm_host::Envelope {
+pub fn to_wit(account: &str, e: &Envelope) -> wasm_host::Envelope {
     let mut flags = Vec::new();
     if !e.unread {
         flags.push("\\Seen".to_string());
@@ -180,7 +180,7 @@ fn to_wit(account: &str, e: &Envelope) -> wasm_host::Envelope {
 
 /// Carry out one plugin's actions on one message. Labels and flags go
 /// first; moving or archiving last, since that takes it out of `mailbox`.
-fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: &[wasm_host::Action]) -> anyhow::Result<(bool, Vec<String>)> {
+pub fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: &[wasm_host::Action]) -> anyhow::Result<(bool, Vec<String>)> {
     use wasm_host::Action as A;
     let ids = [id.to_string()];
     let mut notes = Vec::new();
@@ -210,7 +210,7 @@ fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: &[wa
             }
             A::MoveTo(_) | A::Archive => {}
             A::Notify(text) => notes.push(text.clone()),
-            A::SnoozeUntil(_) => notes.push("snooze isn't available to plugins yet".into()),
+            A::SnoozeUntil(_) | A::FollowUp(_) => notes.push("snooze and follow-up work from commands, not on new mail".into()),
             A::OpenDraft(_) => notes.push("opening drafts isn't available to plugins yet".into()),
             A::FileSender(_) => notes.push("file-sender works only from a sender view".into()),
         }

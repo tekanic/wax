@@ -105,7 +105,7 @@ impl Guest for Sweep {
         Vec::new()
     }
 
-    fn run_command(_id: String, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
+    fn run_command(_id: String, _choice: Option<String>, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
         Err("Sweep has no commands".into())
     }
 

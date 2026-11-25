@@ -1,13 +1,14 @@
-// Wax plugin interface, v0.2.
+// Wax plugin interface, v0.3.
 //
-// Implemented by the host so far: manifest, on-message-received,
-// get-sender-view / on-sender-key, and the host functions log, config,
-// storage, senders and knows-sender. commands / run-command / panel are called later;
-// plugins return empty values for now. message-text and http-get answer
-// "not available yet".
+// Implemented by the host: manifest, on-message-received, commands /
+// run-command, get-sender-view / on-sender-key, and the host functions
+// log, config, storage, senders, knows-sender and utc-offset. panel is
+// called later; plugins return none for now. message-text and http-get
+// answer "not available yet".
 //
-// v0.2: sender views (the Sweep), the `senders` host function and the
-// `file-sender` action.
+// v0.3: commands run (menu of choices, typed text, reader buttons, keys),
+// the `follow-up` action and `snooze-until` are carried out, `utc-offset`.
+// v0.2: sender views (the Sweep), `senders`, `knows-sender`, `file-sender`.
 //
 // Design rules:
 // - Plugins are WebAssembly components run by wasmtime, with no files, no
@@ -19,7 +20,7 @@
 // - Everything a plugin may read arrives as arguments or through `host`,
 //   which is permission-checked too.
 
-package wax:plugin@0.2.0;
+package wax:plugin@0.3.0;
 
 interface types {
     record address {
@@ -52,8 +53,12 @@ interface types {
         mark-read(bool),
         star(bool),
         archive,
-        /// Hide until the given RFC 3339 time, then return to the inbox.
+        /// Hide until the given RFC 3339 time, then return to the Inbox
+        /// unread. A time already past brings it back now.
         snooze-until(string),
+        /// At the given RFC 3339 time, bring this message back to the Inbox
+        /// unless someone else has written in its thread since.
+        follow-up(string),
         /// Show a transient message in the status bar.
         notify(string),
         /// Open the composer with a prefilled draft.
@@ -109,14 +114,38 @@ interface types {
         in-reply-to: option<string>,
     }
 
-    /// A palette command or a button beside an open message.
+    /// A command on the selected message: a key in the message list and,
+    /// optionally, a button in the reader.
     record command {
         id: string,
         title: string,
-        /// Zed-style keystroke, e.g. "cmd-shift-s". Optional.
+        /// Zed-style keystroke, e.g. "z" or "shift-z". Optional.
         keybinding: option<string>,
         /// Show as a button in the reader when a message is open.
         in-message-toolbar: bool,
+        /// Which messages it's offered for.
+        scope: command-scope,
+        /// When not empty, running the command first shows these in a menu;
+        /// the one picked is passed to run-command.
+        choices: list<command-choice>,
+        /// When set, the menu also takes typed text (shown as this hint);
+        /// it reaches run-command as the choice "text:<what was typed>".
+        text-hint: option<string>,
+    }
+
+    enum command-scope {
+        any,
+        /// Messages you sent.
+        sent,
+        /// Messages you received.
+        received,
+    }
+
+    record command-choice {
+        id: string,
+        title: string,
+        /// Shown beside the title, e.g. "Thu 8:00 AM".
+        detail: string,
     }
 
     /// Declarative UI for sidebar panels. Rendered by the core.
@@ -196,6 +225,9 @@ interface host {
     /// other mail from (not counting the Lobby, Spam, Trash or this batch).
     knows-sender: func(message: envelope) -> bool;
 
+    /// Seconds east of UTC on this Mac right now (for local times).
+    utc-offset: func() -> s32;
+
     /// Needs `storage`. Per-plugin key-value store.
     storage-get: func(key: string) -> option<string>;
     storage-set: func(key: string, value: string);
@@ -214,11 +246,13 @@ world plugin {
     /// archived here never appears in the Inbox.
     export on-message-received: func(message: envelope) -> list<action>;
 
-    /// Commands for the palette and message toolbar.
+    /// The plugin's commands. Called when the plugins load and again each
+    /// time a command's menu opens, so choices can show current times.
     export commands: func() -> list<command>;
 
-    /// Runs a command. `message` is set when invoked on an open message.
-    export run-command: func(id: string, message: option<envelope>) -> result<list<action>, string>;
+    /// Runs a command on the selected message (a whole conversation's
+    /// messages get the actions). `choice` is the menu pick, if any.
+    export run-command: func(id: string, choice: option<string>, message: option<envelope>) -> result<list<action>, string>;
 
     /// Optional sidebar panel; return none for no panel.
     export panel: func() -> option<panel>;

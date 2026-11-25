@@ -26,6 +26,7 @@ impl MailApp {
                             crate::errlog::record("", &format!("Plugin {}: {}", p.name(), p.broken.clone().unwrap_or_default()));
                         }
                         this.wasm = Some(Arc::new(Mutex::new(h)));
+                        this.refresh_commands(cx);
                     }
                     Err(e) => {
                         this.status = format!("Plugins could not start: {e:#}").into();

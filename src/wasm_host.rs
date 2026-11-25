@@ -23,7 +23,7 @@ mod bindings {
 use bindings::wax;
 /// The generated bindings for one instance.
 type Plugin_ = bindings::Plugin;
-pub use wax::plugin::types::{Action, Address, Envelope, Manifest, Permission, Sender, SenderView, ViewKey};
+pub use wax::plugin::types::{Action, Address, Command, CommandScope, Envelope, Manifest, Permission, Sender, SenderView, ViewKey};
 
 /// wasmtime has its own error type.
 fn w<T>(r: wasmtime::Result<T>) -> Result<T> {
@@ -146,6 +146,9 @@ impl wax::plugin::host::Host for State {
         }
         let mids = if self.arrival.batch.is_empty() { message.message_id.into_iter().collect() } else { self.arrival.batch_mids.clone() };
         store.lock().unwrap().sender_known(&account, &email, &batch, &mids)
+    }
+    fn utc_offset(&mut self) -> i32 {
+        chrono::Local::now().offset().local_minus_utc()
     }
     fn storage_get(&mut self, key: String) -> Option<String> {
         if !self.grants.contains(&Permission::Storage) {
@@ -320,6 +323,40 @@ impl Host {
             }
         }
         (out, problems)
+    }
+
+    pub fn commands(&mut self) -> (Vec<(String, Command)>, Vec<String>) {
+        let mut out = Vec::new();
+        let mut problems = Vec::new();
+        for i in 0..self.plugins.len() {
+            if !self.plugins[i].running() {
+                continue;
+            }
+            if let Some(cmds) = self.run(i, &mut problems, |b, s| b.call_commands(s)) {
+                let id = self.plugins[i].id.clone();
+                out.extend(cmds.into_iter().map(|c| (id.clone(), c)));
+            }
+        }
+        (out, problems)
+    }
+
+    pub fn run_command(&mut self, id: &str, command: &str, choice: Option<&str>, message: Option<&Envelope>) -> (Vec<Action>, Vec<String>) {
+        let mut problems = Vec::new();
+        let Some(i) = self.plugins.iter().position(|p| p.id == id) else { return (Vec::new(), problems) };
+        if !self.plugins[i].running() {
+            return (Vec::new(), problems);
+        }
+        match self.run(i, &mut problems, |b, s| b.call_run_command(s, command, choice, message)) {
+            Some(Ok(actions)) => {
+                let ok = self.permitted(i, actions, &mut problems);
+                (ok, problems)
+            }
+            Some(Err(e)) => {
+                problems.push(e);
+                (Vec::new(), problems)
+            }
+            None => (Vec::new(), problems),
+        }
     }
 
     /// The first running plugin's sender view (the Sweep), as (plugin id, view).
@@ -631,5 +668,42 @@ mod tests {
         // Another account isn't screened.
         let other = Envelope { account: "other@x.test".into(), ..mail("hi", "new@shop.test") };
         assert!(h.arrived(&other).0.is_empty());
+    }
+
+    #[test]
+    fn snooze_commands_run_in_the_sandbox() {
+        let root = scratch("snooze");
+        let g = [Permission::ReadEnvelopes, Permission::ModifyMail];
+        let Some(()) = install(&root, "snooze", "wax_snooze.wasm", Some(&g), "morning = 7\n") else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        let (cmds, problems) = h.commands();
+        assert!(problems.is_empty(), "{problems:?}");
+        let names: Vec<(&str, &str, Option<&str>)> = cmds.iter().map(|(p, c)| (p.as_str(), c.id.as_str(), c.keybinding.as_deref())).collect();
+        assert_eq!(names, [("snooze", "snooze", Some("z")), ("snooze", "follow-up", Some("w"))]);
+        assert!(cmds[0].1.choices.iter().any(|c| c.id == "tomorrow" && c.detail.ends_with("7 AM")));
+        let msg = mail("hi", "a@b.c");
+        let (acts, problems) = h.run_command("snooze", "snooze", Some("tomorrow"), Some(&msg));
+        assert!(problems.is_empty(), "{problems:?}");
+        let Action::SnoozeUntil(t) = &acts[0] else { panic!("{acts:?}") };
+        let at = chrono::DateTime::parse_from_rfc3339(t).unwrap().with_timezone(&chrono::Local);
+        assert_eq!((at.date_naive() - chrono::Local::now().date_naive()).num_days(), 1);
+        assert_eq!(at.format("%H:%M").to_string(), "07:00");
+        let (acts, _) = h.run_command("snooze", "follow-up", Some("text:in 3 hours"), Some(&msg));
+        assert!(matches!(&acts[..], [Action::FollowUp(_)]), "{acts:?}");
+        let (acts, problems) = h.run_command("snooze", "snooze", Some("text:gibberish"), Some(&msg));
+        assert!(acts.is_empty());
+        assert!(problems[0].contains("gibberish"), "{problems:?}");
+    }
+
+    #[test]
+    fn commands_need_their_permission() {
+        let root = scratch("snooze-ro");
+        let Some(()) = install(&root, "snooze", "wax_snooze.wasm", Some(&[Permission::ReadEnvelopes]), "") else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        let (acts, problems) = h.run_command("snooze", "snooze", Some("tomorrow"), Some(&mail("hi", "a@b.c")));
+        assert!(acts.is_empty());
+        assert!(problems[0].contains("refused"), "{problems:?}");
     }
 }

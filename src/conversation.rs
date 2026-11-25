@@ -71,7 +71,7 @@ impl MailApp {
     }
 
     /// Your addresses for an account: its own and its From identities.
-    fn own_addresses(&self, account: &str) -> Vec<String> {
+    pub fn own_addresses(&self, account: &str) -> Vec<String> {
         std::iter::once(account.to_lowercase())
             .chain(self.identities_for(account).into_iter().map(|i| i.email.to_lowercase()))
             .collect()

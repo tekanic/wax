@@ -163,6 +163,12 @@ impl Store {
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN attachments TEXT", []).ok();
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN bcc_list TEXT", []).ok();
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN account TEXT", []).ok();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS reminders (
+                 id INTEGER PRIMARY KEY, account TEXT NOT NULL, kind TEXT NOT NULL,
+                 message_ids TEXT NOT NULL, thread TEXT, subject TEXT NOT NULL DEFAULT '',
+                 created INTEGER NOT NULL, due INTEGER NOT NULL);",
+        )?;
         // Older versions cached "Could not load message" as a body; fetch those again.
         conn.execute("DELETE FROM bodies WHERE body LIKE 'Could not load message:%'", []).ok();
         // v8: recipients (Sent shows and searches them) and Gmail's thread id.
@@ -806,6 +812,64 @@ impl Store {
         }
         Ok(out)
     }
+
+    pub fn add_reminder(&self, r: &Reminder) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO reminders (account, kind, message_ids, thread, subject, created, due) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![r.account, r.kind, r.message_ids.join("\x1e"), r.thread, r.subject, r.created, r.due],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn reminders_due(&self, now: i64) -> Result<Vec<Reminder>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, account, kind, message_ids, thread, subject, created, due FROM reminders WHERE due <= ?1 ORDER BY due",
+        )?;
+        let rows = stmt.query_map(params![now], |r| {
+            Ok(Reminder {
+                id: r.get(0)?,
+                account: r.get(1)?,
+                kind: r.get(2)?,
+                message_ids: r.get::<_, String>(3)?.split('\x1e').filter(|s| !s.is_empty()).map(str::to_string).collect(),
+                thread: r.get(4)?,
+                subject: r.get(5)?,
+                created: r.get(6)?,
+                due: r.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn delete_reminder(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM reminders WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn drop_reminders_for(&self, account: &str, kind: &str, message_ids: &[String]) -> Result<()> {
+        let mut stmt = self.conn.prepare("SELECT id, message_ids FROM reminders WHERE account = ?1 AND kind = ?2")?;
+        let ids: Vec<i64> = stmt
+            .query_map(params![account, kind], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+            .filter_map(|r| r.ok())
+            .filter(|(_, mids)| mids.split('\x1e').any(|m| message_ids.iter().any(|x| x == m)))
+            .map(|(id, _)| id)
+            .collect();
+        for id in ids {
+            self.delete_reminder(id)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reminder {
+    pub id: i64,
+    pub account: String,
+    pub kind: String,
+    pub message_ids: Vec<String>,
+    pub thread: Option<String>,
+    pub subject: String,
+    pub created: i64,
+    pub due: i64,
 }
 
 #[cfg(test)]
@@ -899,5 +963,31 @@ mod thread_tests {
         store.upsert_envelopes(me, &[bare]).unwrap();
         let again = store.lookup(me, "[Gmail]/Sent Mail", "5").unwrap();
         assert_eq!((again.to.len(), again.thread.as_deref()), (1, Some("77")));
+    }
+
+    #[test]
+    fn reminders_come_due() {
+        let store = scratch("reminders");
+        let r = |kind: &str, mids: &[&str], due: i64| super::Reminder {
+            id: 0,
+            account: "me@x.com".into(),
+            kind: kind.into(),
+            message_ids: mids.iter().map(|m| m.to_string()).collect(),
+            thread: Some("77".into()),
+            subject: "Quote".into(),
+            created: 1,
+            due,
+        };
+        store.add_reminder(&r("snooze", &["<a@x>", "<b@x>"], 100)).unwrap();
+        store.add_reminder(&r("follow-up", &["<c@x>"], 200)).unwrap();
+        assert!(store.reminders_due(50).unwrap().is_empty());
+        let due = store.reminders_due(150).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].message_ids, ["<a@x>", "<b@x>"]);
+        store.drop_reminders_for("me@x.com", "snooze", &["<b@x>".into()]).unwrap();
+        assert_eq!(store.reminders_due(1000).unwrap().len(), 1);
+        let left = store.reminders_due(1000).unwrap();
+        store.delete_reminder(left[0].id).unwrap();
+        assert!(store.reminders_due(1000).unwrap().is_empty());
     }
 }

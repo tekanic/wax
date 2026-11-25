@@ -1,0 +1,11 @@
+# Snooze & follow-up.
+#
+# z on a message: snooze it until a time, then it's back in the Inbox unread.
+# w on a message you sent: remind me if nobody replies by a time.
+# Both take typed times too: "fri 9am", "12/3 5pm", "in 2 days", "tomorrow".
+
+# Hour (0-23) that "tomorrow", "next week" and typed days without a time use.
+morning = 8
+
+# Hour that "this evening" and "tonight" use.
+evening = 18

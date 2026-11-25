@@ -107,7 +107,7 @@ impl Guest for Screener {
         Vec::new()
     }
 
-    fn run_command(_id: String, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
+    fn run_command(_id: String, _choice: Option<String>, _message: Option<Envelope>) -> Result<Vec<Action>, String> {
         Err("Screener has no commands".into())
     }
 

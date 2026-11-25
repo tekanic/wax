@@ -14,6 +14,7 @@ mod blocks;
 mod compose;
 mod errlog;
 mod compose_view;
+mod commands;
 mod config_watch;
 mod conversation;
 mod files;
@@ -33,6 +34,7 @@ mod plugins;
 mod plugins_pane;
 mod wasm_host;
 mod problems;
+mod reminders;
 mod rules;
 mod store;
 mod settings;
@@ -357,6 +359,9 @@ struct MailApp {
     compose_subs: Vec<Subscription>,
     autosave_gen: u64,
     saving_draft: bool,
+    plugin_commands: Vec<(String, wasm_host::Command)>,
+    command_menu: Option<commands::CommandMenu>,
+    checking_reminders: bool,
     /// A sent message waiting out its undo window.
     pending_send: Option<PendingSend>,
     /// Focus target of the countdown overlay (its keys live there).
@@ -472,6 +477,9 @@ impl MailApp {
             compose_subs: Vec::new(),
             autosave_gen: 0,
             saving_draft: false,
+            plugin_commands: Vec::new(),
+            command_menu: None,
+            checking_reminders: false,
             pending_send: None,
             countdown_focus: cx.focus_handle(),
             after_send: None,
@@ -513,6 +521,7 @@ impl MailApp {
         app.assign_signatures();
         app.watch_config(cx);
         app.reload_plugins(cx);
+        app.watch_reminders(cx);
         match app.accounts.first().map(|a| a.email.clone()) {
             Some(first) => {
                 app.account = first.as_str().into();
@@ -3382,6 +3391,7 @@ impl MailApp {
                                             d.child(div().truncate().text_xs().text_color(rgb(MUTED)).child(conversation::recipients_line(&e.to)))
                                         }),
                                 )
+                                .children(self.render_command_buttons(e, cx))
                                 .when(e.mailbox == mail::DRAFTS && !self.unified, |d| {
                                     d.child(
                                         action_button("edit-draft", "Edit  ⏎", true)
@@ -3486,7 +3496,9 @@ impl Render for MailApp {
             (None, None) => self.html_view.hide(),
         }
         let counting_down = self.pending_send.is_some() || self.after_send.is_some();
-        let mode = if self.label_picker.is_some() {
+        let mode = if self.command_menu.is_some() {
+            Mode::Choices
+        } else if self.label_picker.is_some() {
             Mode::Labels
         } else if self.row_menu.is_some() {
             Mode::Menu
@@ -3527,6 +3539,9 @@ impl Render for MailApp {
         }
         if self.label_picker.is_some() {
             root_context.add("LabelPicker");
+        }
+        if self.command_menu.is_some() {
+            root_context.add("ChoiceMenu");
         }
         div()
             .key_context(root_context)
@@ -3594,6 +3609,15 @@ impl Render for MailApp {
             .on_action(cx.listener(|this, _: &LabelAccept, w, cx| this.label_accept(false, w, cx)))
             .on_action(cx.listener(|this, _: &LabelAcceptArchive, w, cx| this.label_accept(true, w, cx)))
             .on_action(cx.listener(|this, _: &CloseLabels, w, cx| this.close_label_picker(w, cx)))
+            .on_action(cx.listener(|this, _: &ChoiceNext, _, cx| this.command_menu_move(1, cx)))
+            .on_action(cx.listener(|this, _: &ChoicePrev, _, cx| this.command_menu_move(-1, cx)))
+            .on_action(cx.listener(|this, _: &ChoiceAccept, w, cx| this.command_menu_accept(w, cx)))
+            .on_action(cx.listener(|this, _: &CloseChoices, w, cx| this.close_command_menu(w, cx)))
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, w, cx| {
+                if this.list_key(ev, w, cx) {
+                    cx.stop_propagation();
+                }
+            }))
             .on_action(cx.listener(|this, _: &GoInbox, w, cx| this.go_to("INBOX", w, cx)))
             .on_action(cx.listener(|this, _: &GoStarred, w, cx| this.go_to("[Gmail]/Starred", w, cx)))
             .on_action(cx.listener(|this, _: &GoSent, w, cx| this.go_to("[Gmail]/Sent Mail", w, cx)))
@@ -3637,6 +3661,7 @@ impl Render for MailApp {
             .when(go_pending, |d| d.child(self.render_go_menu(cx)))
             .when(self.row_menu.is_some(), |d| d.child(self.render_row_menu(cx)))
             .children(self.render_label_picker(cx))
+            .children(self.render_command_menu(cx))
 
     }
 }

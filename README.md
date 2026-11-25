@@ -133,7 +133,7 @@ a Filter rule) never flashes into the Inbox or sets off a notification.
 
 The plugins live in
 `~/.config/wax/plugins/<id>/plugin.wasm` (interface: `wit/plugin.wit`,
-`wax:plugin@0.2.0`). Each call runs on a fresh instance with no files, no
+`wax:plugin@0.3.0`). Each call runs on a fresh instance with no files, no
 network, 64 MB of memory and a fuel limit, so a plugin that loops or runs away
 is stopped and switched off. A new plugin starts off; Settings → Plugins shows
 what it asks for and switches it on, which writes its `grants.toml`. Actions
@@ -149,6 +149,14 @@ scripts/build-plugins.sh            # build plugins/* and install them
 and where each one files a sender's mail (`r = "Reading"   # newsletters` in its
 `config.toml`). Wax draws the view and keeps the sender rules, which the
 Screener and block/allow use too.
+
+**Snooze & follow-up** (`plugins/snooze`): `z` (or the Snooze button) hides a
+message or conversation under a Snoozed label until a time, then puts it back in
+the Inbox unread; `w` on a message you sent brings it back if nobody has replied
+by then. Pick a time or type one: `fri 9am`, `12/3 5pm`, `in 2 days`,
+`tomorrow`. Reminders live in the local cache, survive restarts and are checked
+every 30 seconds; snoozing again replaces the time, "Back to the Inbox now"
+unsnoozes. Its `config.toml` sets the morning and evening hours.
 
 **Filter rules** (`plugins/filter-rules`) acts on new mail, one rule per line:
 

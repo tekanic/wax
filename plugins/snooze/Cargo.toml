@@ -1,0 +1,21 @@
+[package]
+name = "wax-snooze"
+version = "0.1.0"
+edition = "2021"
+description = "Wax plugin: snooze mail and get reminded when nobody replies"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+# Built on its own (scripts/build-plugins.sh), not part of the app's build.
+[workspace]
