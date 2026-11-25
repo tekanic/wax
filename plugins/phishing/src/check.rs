@@ -1,5 +1,16 @@
 pub const THRESHOLD: u32 = 3;
 
+const TLDS: &str = include_str!("tlds.txt");
+
+pub fn real_tld(domain: &str) -> bool {
+    let Some(tld) = domain.rsplit('.').next().filter(|t| !t.is_empty()) else { return false };
+    let tld = tld.to_ascii_uppercase();
+    if matches!(tld.as_str(), "LOCAL" | "INTERNAL" | "LAN" | "HOME" | "LOCALDOMAIN" | "CORP") {
+        return true;
+    }
+    TLDS.lines().any(|l| !l.starts_with('#') && l.trim() == tld)
+}
+
 const PUBLIC: [&str; 16] = [
     "gmail.com",
     "googlemail.com",
@@ -58,7 +69,7 @@ pub const BRANDS: &[(&str, &[&str])] = &[
     ("geek squad", &["bestbuy.com"]),
 ];
 
-const PRESSURE: [(&str, u32); 27] = [
+const PRESSURE: [(&str, u32); 36] = [
     ("verify your account", 2),
     ("verify your identity", 2),
     ("confirm your account", 2),
@@ -86,6 +97,15 @@ const PRESSURE: [(&str, u32); 27] = [
     ("payment details", 2),
     ("shared a document", 1),
     ("voicemail", 1),
+    ("blocked your account", 2),
+    ("account has been blocked", 2),
+    ("account is blocked", 2),
+    ("will be deleted", 2),
+    ("storage is full", 2),
+    ("storage full", 2),
+    ("renew your subscription", 1),
+    ("payment declined", 1),
+    ("suspicious activity", 1),
 ];
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -126,6 +146,7 @@ pub struct Mail<'a> {
     pub name: &'a str,
     pub email: &'a str,
     pub subject: &'a str,
+    pub me: &'a [String],
 }
 
 pub struct Contact {
@@ -382,6 +403,19 @@ pub fn check(m: &Mail, contacts: &[Contact], settings: &Settings) -> Verdict {
     if dom.split('.').any(|l| l.starts_with("xn--")) {
         add(3, format!("its domain {dom} uses look-alike letters"));
     }
+    if !real_tld(&dom) {
+        add(3, format!("{dom} isn't a real internet domain"));
+    }
+    let shown = m.name.trim().trim_matches(['"', '\'']).to_lowercase();
+    if !shown.is_empty() {
+        let pretends = m.me.iter().map(|a| a.to_lowercase()).any(|a| {
+            let local = a.split('@').next().unwrap_or("").to_string();
+            (shown == a || shown == local) && !a.eq_ignore_ascii_case(m.email)
+        });
+        if pretends {
+            add(3, format!("it's named as if it came from you ({}), but it came from {dom}", m.name.trim()));
+        }
+    }
     if let Some(at) = m.name.find('@') {
         let start = m.name[..at].rfind(|c: char| c.is_whitespace() || c == '<' || c == '(' || c == '"').map_or(0, |i| i + 1);
         let shown = domain(m.name[start..].split(|c: char| c.is_whitespace() || c == '>' || c == ')' || c == '"').next().unwrap_or(""));
@@ -444,7 +478,7 @@ mod tests {
         let files: Vec<String> = files.iter().map(|f| f.to_string()).collect();
         let contacts = vec![Contact { name: "Dana Smith".into(), email: "dsmith@emco.com".into() }];
         check_body(
-            &Mail { name: m.0, email: m.1, subject: "" },
+            &Mail { name: m.0, email: m.1, subject: "", me: &[] },
             &Body { text, links: &links, headers: &headers, attachments: &files },
             &contacts,
             &settings(""),
@@ -486,7 +520,8 @@ mod tests {
             Contact { name: "Jim Lane".into(), email: "jlane@emco.com".into() },
             Contact { name: "Shop".into(), email: "news@gmail.com".into() },
         ];
-        check(&Mail { name, email, subject }, &contacts, &settings("trust = \"partner.example\"\nbrand = \"Acme Bank: acmebank.com\"\n"))
+        let me = vec!["pat@example.com".to_string()];
+        check(&Mail { name, email, subject, me: &me }, &contacts, &settings("trust = \"partner.example\"\nbrand = \"Acme Bank: acmebank.com\"\n"))
     }
 
     fn flagged(v: &Verdict) -> bool {
@@ -506,6 +541,11 @@ mod tests {
         assert!(flagged(&run("service@paypal.com", "x@random.ru", "hi")));
         assert!(flagged(&run("Support", "help@xn--pypal-4ve.com", "hi")));
         assert!(flagged(&run("Acme Bank", "alerts@acme-bank-alerts.com", "hi")));
+        let blocked = run("pat", "alert-357-934232@qdibo.khw", "We've blocked your account! 🚫Your photos and videos will bedeleted on 23-11-2026 ⚠️ Renewyour subscription for free now!");
+        assert!(flagged(&blocked), "{blocked:?}");
+        assert!(blocked.reasons.iter().any(|r| r.contains("isn't a real internet domain")), "{blocked:?}");
+        assert!(blocked.reasons.iter().any(|r| r.contains("as if it came from you")), "{blocked:?}");
+        assert!(flagged(&run("GmailSupportTeam", "alert-357-934232@gvxdk.bij", "We've Blocked Your Account!")));
     }
 
     #[test]
@@ -530,6 +570,11 @@ mod tests {
             ("Corner Shop", "cornershop@ymail.com", "T1"),
             ("QuickBooks for Mac", "IntuitNotices@e.intuit.com", "Urgent Notice"),
             ("Microsoft Advertising", "noreply@microsoftadvertising.com", "[REGISTER NOW] AI readiness"),
+            ("Jamie Rivera", "jamie@mail.dealsdigest.xyz", "New listings this week"),
+            ("City Library", "alerts@libraryinfo.org", "Reservation Cancellation"),
+            ("Pat Example", "pat@example.com", "note to self"),
+            ("Cron", "root@macbook.local", "backup done"),
+            ("na", "na@ip-10-0-0-12.ec2.internal", "alarm"),
             ("Amazon Web Services", "health@aws.com", "Action may be required"),
             ("Google Fitbit", "noreply@e.fitbit.com", "Fitbit Air is here"),
         ] {

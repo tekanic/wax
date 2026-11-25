@@ -31,7 +31,8 @@ impl Guest for Phishing {
             .map(|s| Contact { name: s.name, email: s.email })
             .collect();
         let name = from.name.clone().unwrap_or_default();
-        let mail = Mail { name: &name, email: &from.email, subject: &m.subject };
+        let me: Vec<String> = std::iter::once(m.account.clone()).chain(m.to.iter().map(|a| a.email.clone())).collect();
+        let mail = Mail { name: &name, email: &from.email, subject: &m.subject, me: &me };
         let mut v = check::check(&mail, &contacts, &settings);
         if let Ok(c) = read_message(&m.account, &m.mailbox, &m.id) {
             let links: Vec<(String, String)> = c.links.into_iter().map(|l| (l.text, l.url)).collect();
