@@ -87,7 +87,7 @@ impl MailApp {
             return Folder::Other;
         }
         if self.unified {
-            return Folder::Inbox;
+            return if self.unified_box == mail::SENT { Folder::Sent } else { Folder::Inbox };
         }
         let Some(m) = self.active() else { return Folder::Other };
         let is = |s: &str| m.name.eq_ignore_ascii_case(s);

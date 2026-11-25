@@ -16,7 +16,7 @@ io-email = { version = "0.1.0", default-features = false, features = ["imap", "s
 io-smtp = { version = "0.1", default-features = false }
 mail-builder = "2.0.1"
 markdown = "1.0.0"
-mail-parser = "0.11.9"
+mail-parser = { version = "0.11.9", features = ["full_encoding"] }
 pimalaya-stream = { version = "0.0.1", default-features = false, features = ["std"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 secrecy = "0.10"

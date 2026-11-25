@@ -32,9 +32,12 @@ pub struct Envelope {
     pub attachments: Vec<Attachment>,
     /// The account it belongs to.
     pub account: SharedString,
-    /// To and Cc as (name, address). Filled for newly fetched mail (what
-    /// plugins see), not kept in the cache.
+    /// To and Cc as (name, address), kept in the cache: Sent shows and
+    /// searches them.
     pub to: Vec<(String, String)>,
+    /// Gmail's conversation id (X-GM-THRID): messages that share it are
+    /// one thread, your replies included.
+    pub thread: Option<String>,
     /// Gmail labels as the server lists them (system ones start with a
     /// backslash, e.g. "\\Important"). Newly fetched mail only, like `to`.
     pub labels: Vec<String>,

@@ -32,7 +32,16 @@ pub fn default_path() -> PathBuf {
 }
 
 const ENVELOPE_COLUMNS: &str =
-    "e.mailbox, e.id, e.message_id, e.from_name, e.from_email, e.subject, e.ts, e.unread, e.preview, b.body, b.html, e.flags, b.files, e.account";
+    "e.mailbox, e.id, e.message_id, e.from_name, e.from_email, e.subject, e.ts, e.unread, e.preview, b.body, b.html, e.flags, b.files, e.account, e.to_list, e.thread_id";
+
+/// Recipients in one column: name and address split by \x1f, people by \x1e.
+pub fn encode_people(people: &[(String, String)]) -> String {
+    people.iter().map(|(n, e)| format!("{}\x1f{e}", n.replace(['\x1e', '\x1f'], " "))).collect::<Vec<_>>().join("\x1e")
+}
+
+pub fn decode_people(s: &str) -> Vec<(String, String)> {
+    s.split('\x1e').filter(|p| !p.is_empty()).filter_map(|p| p.split_once('\x1f')).map(|(n, e)| (n.to_string(), e.to_string())).collect()
+}
 
 fn flag_bits(e: &Envelope) -> i64 {
     (e.starred as i64) | ((e.important as i64) << 1)
@@ -56,7 +65,8 @@ fn row_to_envelope(row: &Row) -> rusqlite::Result<Envelope> {
         important: row.get::<_, Option<i64>>(11)?.unwrap_or(0) & 2 != 0,
         attachments: row.get::<_, Option<String>>(12)?.map(|f| crate::model::Attachment::decode(&f)).unwrap_or_default(),
         account: row.get::<_, String>(13)?.into(),
-        to: Vec::new(),
+        to: row.get::<_, Option<String>>(14)?.map(|s| decode_people(&s)).unwrap_or_default(),
+        thread: row.get(15)?,
         labels: Vec::new(),
         // Recompute from the body when cached, so preview fixes apply to old rows.
         preview: match &body {
@@ -153,6 +163,12 @@ impl Store {
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN attachments TEXT", []).ok();
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN bcc_list TEXT", []).ok();
         conn.execute("ALTER TABLE compose_snapshot ADD COLUMN account TEXT", []).ok();
+        // Older versions cached "Could not load message" as a body; fetch those again.
+        conn.execute("DELETE FROM bodies WHERE body LIKE 'Could not load message:%'", []).ok();
+        // v8: recipients (Sent shows and searches them) and Gmail's thread id.
+        conn.execute("ALTER TABLE envelopes ADD COLUMN to_list TEXT NOT NULL DEFAULT ''", []).ok();
+        conn.execute("ALTER TABLE envelopes ADD COLUMN thread_id TEXT", []).ok();
+        conn.execute("CREATE INDEX IF NOT EXISTS envelopes_by_thread ON envelopes (account, thread_id)", []).ok();
         // v4: star and Important, as bits (1 = starred, 2 = important).
         conn.execute("ALTER TABLE envelopes ADD COLUMN flags INTEGER NOT NULL DEFAULT 0", []).ok();
         // v7: bodies list their attachments. Refetch older ones so they do.
@@ -267,13 +283,15 @@ impl Store {
         {
             let mut upsert = tx.prepare(
                 "INSERT INTO envelopes
-                     (account, mailbox, id, message_id, from_name, from_email, subject, ts, unread, preview, flags)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                     (account, mailbox, id, message_id, from_name, from_email, subject, ts, unread, preview, flags, to_list, thread_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT (account, mailbox, id) DO UPDATE SET
                      message_id = excluded.message_id, from_name = excluded.from_name,
                      from_email = excluded.from_email, subject = excluded.subject,
                      ts = excluded.ts, unread = excluded.unread, flags = excluded.flags,
-                     preview = CASE WHEN excluded.preview = '' THEN envelopes.preview ELSE excluded.preview END",
+                     preview = CASE WHEN excluded.preview = '' THEN envelopes.preview ELSE excluded.preview END,
+                     to_list = CASE WHEN excluded.to_list = '' THEN envelopes.to_list ELSE excluded.to_list END,
+                     thread_id = COALESCE(excluded.thread_id, envelopes.thread_id)",
             )?;
             for e in list {
                 upsert.execute(params![
@@ -288,6 +306,8 @@ impl Store {
                     e.unread,
                     e.preview.as_ref(),
                     flag_bits(e),
+                    encode_people(&e.to),
+                    e.thread,
                 ])?;
             }
             if let Some(oldest) = list.iter().map(|e| e.ts).min() {
@@ -322,15 +342,18 @@ impl Store {
         {
             let mut upsert = tx.prepare(
                 "INSERT INTO envelopes
-                     (account, mailbox, id, message_id, from_name, from_email, subject, ts, unread, preview, flags)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '', ?10)
+                     (account, mailbox, id, message_id, from_name, from_email, subject, ts, unread, preview, flags, to_list, thread_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '', ?10, ?11, ?12)
                  ON CONFLICT (account, mailbox, id) DO UPDATE SET
-                     unread = excluded.unread, subject = excluded.subject, flags = excluded.flags",
+                     unread = excluded.unread, subject = excluded.subject, flags = excluded.flags,
+                     to_list = CASE WHEN excluded.to_list = '' THEN envelopes.to_list ELSE excluded.to_list END,
+                     thread_id = COALESCE(excluded.thread_id, envelopes.thread_id)",
             )?;
             for e in list {
                 upsert.execute(params![
                     account, e.mailbox, e.id, e.message_id, e.from.as_ref(),
                     e.from_email.as_ref(), e.subject.as_ref(), e.ts, e.unread, flag_bits(e),
+                    encode_people(&e.to), e.thread,
                 ])?;
             }
         }
@@ -344,14 +367,17 @@ impl Store {
         {
             let mut upsert = tx.prepare(
                 "INSERT INTO envelopes
-                     (account, mailbox, id, message_id, from_name, from_email, subject, ts, unread, preview, flags)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '', ?10)
-                 ON CONFLICT (account, mailbox, id) DO UPDATE SET unread = excluded.unread, flags = excluded.flags",
+                     (account, mailbox, id, message_id, from_name, from_email, subject, ts, unread, preview, flags, to_list, thread_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '', ?10, ?11, ?12)
+                 ON CONFLICT (account, mailbox, id) DO UPDATE SET unread = excluded.unread, flags = excluded.flags,
+                     to_list = CASE WHEN excluded.to_list = '' THEN envelopes.to_list ELSE excluded.to_list END,
+                     thread_id = COALESCE(excluded.thread_id, envelopes.thread_id)",
             )?;
             for e in list {
                 upsert.execute(params![
                     account, e.mailbox, e.id, e.message_id, e.from.as_ref(),
                     e.from_email.as_ref(), e.subject.as_ref(), e.ts, e.unread, flag_bits(e),
+                    encode_people(&e.to), e.thread,
                 ])?;
             }
         }
@@ -704,6 +730,11 @@ impl Store {
     /// bodies. Gmail keeps the same message in several folders, so results
     /// are de-duplicated by Message-ID.
     pub fn search(&self, account: &str, query: &str, limit: u32) -> Result<Vec<Envelope>> {
+        self.search_in(account, None, query, limit)
+    }
+
+    /// `search`, limited to one folder when `mailbox` is set (Sent).
+    pub fn search_in(&self, account: &str, mailbox: Option<&str>, query: &str, limit: u32) -> Result<Vec<Envelope>> {
         let terms: Vec<String> = query
             .split_whitespace()
             .map(|t| format!("%{}%", t.replace('%', "").replace('_', "")))
@@ -714,18 +745,18 @@ impl Store {
         let mut sql = format!(
             "SELECT {ENVELOPE_COLUMNS} FROM envelopes e
              LEFT JOIN bodies b ON b.account = e.account AND b.mailbox = e.mailbox AND b.id = e.id
-             WHERE e.account = ?1"
+             WHERE e.account = ?1 AND (?2 IS NULL OR e.mailbox = ?2)"
         );
         for i in 0..terms.len() {
-            let p = i + 2;
+            let p = i + 3;
             sql.push_str(&format!(
                 " AND (e.subject LIKE ?{p} OR e.from_name LIKE ?{p} OR e.from_email LIKE ?{p}
-                      OR e.preview LIKE ?{p} OR b.body LIKE ?{p})"
+                      OR e.to_list LIKE ?{p} OR e.preview LIKE ?{p} OR b.body LIKE ?{p})"
             ));
         }
         sql.push_str(" ORDER BY e.ts DESC LIMIT 2000");
         let mut stmt = self.conn.prepare(&sql)?;
-        let mut args: Vec<&dyn rusqlite::ToSql> = vec![&account];
+        let mut args: Vec<&dyn rusqlite::ToSql> = vec![&account, &mailbox];
         for t in &terms {
             args.push(t);
         }
@@ -740,6 +771,38 @@ impl Store {
                     break;
                 }
             }
+        }
+        Ok(out)
+    }
+
+    /// Every cached message in a conversation, oldest first. Gmail keeps a
+    /// message in several folders; one copy each, preferring one whose body
+    /// is cached, then one that isn't All Mail.
+    pub fn thread(&self, account: &str, thread: &str) -> Result<Vec<Envelope>> {
+        let sql = format!(
+            "SELECT {ENVELOPE_COLUMNS} FROM envelopes e
+             LEFT JOIN bodies b ON b.account = e.account AND b.mailbox = e.mailbox AND b.id = e.id
+             WHERE e.account = ?1 AND e.thread_id = ?2
+             ORDER BY e.ts ASC, (b.body IS NULL) ASC, (e.mailbox = '[Gmail]/All Mail') ASC LIMIT 500"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![account, thread], row_to_envelope)?;
+        let mut seen = HashSet::new();
+        Ok(rows
+            .filter_map(|r| r.ok())
+            .filter(|e| seen.insert(e.message_id.clone().unwrap_or_else(|| format!("{}/{}", e.mailbox, e.id))))
+            .collect())
+    }
+
+    /// How many messages each conversation has in the cache.
+    pub fn thread_counts(&self, account: &str, threads: &[String]) -> Result<std::collections::HashMap<String, usize>> {
+        let mut out = std::collections::HashMap::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT COUNT(DISTINCT COALESCE(message_id, mailbox || '/' || id)) FROM envelopes WHERE account = ?1 AND thread_id = ?2",
+        )?;
+        for t in threads {
+            let n: i64 = stmt.query_row(params![account, t], |r| r.get(0))?;
+            out.insert(t.clone(), n as usize);
         }
         Ok(out)
     }
@@ -767,7 +830,74 @@ pub mod tests_support {
             attachments: Vec::new(),
             account: Default::default(),
             to: Vec::new(),
+            thread: None,
             labels: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod thread_tests {
+    use super::{decode_people, encode_people, tests_support::envelope, Store};
+
+    fn scratch(name: &str) -> Store {
+        let dir = std::env::temp_dir().join(format!("wax-store-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        Store::open_at(&dir.join("cache.sqlite")).unwrap()
+    }
+
+    #[test]
+    fn people_round_trip() {
+        let p = vec![("Ann, Jr.".to_string(), "ann@x.com".to_string()), ("".to_string(), "bob@x.com".to_string())];
+        assert_eq!(decode_people(&encode_people(&p)), p);
+        assert!(decode_people("").is_empty());
+    }
+
+    #[test]
+    fn threads_and_sent_search() {
+        let mut store = scratch("threads");
+        let me = "me@x.com";
+        let msg = |mailbox: &str, id: &str, from: &str, mid: &str, ts: i64, thread: &str| {
+            let mut e = envelope(mailbox, id, from);
+            e.message_id = Some(mid.into());
+            e.ts = ts;
+            e.thread = Some(thread.into());
+            e
+        };
+        // A conversation: their message (in Inbox and All Mail), your reply
+        // in Sent, and an unrelated message.
+        let mut reply = msg("[Gmail]/Sent Mail", "5", me, "<r@x>", 20, "77");
+        reply.to = vec![("Ann Lee".into(), "ann@shop.com".into())];
+        reply.subject = "Re: the quote".into();
+        store
+            .upsert_envelopes(
+                me,
+                &[
+                    msg("INBOX", "1", "ann@shop.com", "<a@x>", 10, "77"),
+                    msg("[Gmail]/All Mail", "100", "ann@shop.com", "<a@x>", 10, "77"),
+                    reply,
+                    msg("INBOX", "2", "other@x.com", "<o@x>", 30, "88"),
+                ],
+            )
+            .unwrap();
+        let t = store.thread(me, "77").unwrap();
+        let ids: Vec<(&str, &str)> = t.iter().map(|e| (e.mailbox.as_str(), e.id.as_str())).collect();
+        assert_eq!(ids, [("INBOX", "1"), ("[Gmail]/Sent Mail", "5")], "one copy each, oldest first, not the All Mail copy");
+        let counts = store.thread_counts(me, &["77".into(), "88".into()]).unwrap();
+        assert_eq!((counts["77"], counts["88"]), (2, 1));
+        // Sent search finds the reply by recipient name or address, and
+        // stays in Sent.
+        let found = |q: &str, mb: Option<&str>| store.search_in(me, mb, q, 10).unwrap().into_iter().map(|e| e.id).collect::<Vec<_>>();
+        assert_eq!(found("ann lee", Some("[Gmail]/Sent Mail")), ["5"]);
+        assert_eq!(found("shop.com", Some("[Gmail]/Sent Mail")), ["5"]);
+        assert_eq!(found("quote", Some("[Gmail]/Sent Mail")), ["5"]);
+        assert!(found("other", Some("[Gmail]/Sent Mail")).is_empty());
+        assert_eq!(found("other", None), ["2"]);
+        // A later refresh without recipients or thread keeps them.
+        let mut bare = envelope("[Gmail]/Sent Mail", "5", me);
+        bare.message_id = Some("<r@x>".into());
+        store.upsert_envelopes(me, &[bare]).unwrap();
+        let again = store.lookup(me, "[Gmail]/Sent Mail", "5").unwrap();
+        assert_eq!((again.to.len(), again.thread.as_deref()), (1, Some("77")));
     }
 }

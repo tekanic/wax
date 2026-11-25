@@ -17,6 +17,8 @@ pub const SPAM: &str = "[Gmail]/Spam";
 pub const STARRED: &str = "[Gmail]/Starred";
 pub const IMPORTANT: &str = "[Gmail]/Important";
 pub const INBOX: &str = "INBOX";
+pub const SENT: &str = "[Gmail]/Sent Mail";
+pub const ALL_MAIL: &str = "[Gmail]/All Mail";
 pub const KEYCHAIN_SERVICE: &str = "gpui-mail";
 
 pub fn keychain_password(account: &str) -> Result<String> {
@@ -226,30 +228,64 @@ impl Session {
         Ok(out)
     }
 
-    /// Fill in Gmail's Important label, which the generic envelope listing
-    /// doesn't carry.
+    /// Fill in Gmail's Important label and conversation id, which the
+    /// generic envelope listing doesn't carry.
     fn annotate_labels(&mut self, mailbox: &str, list: &mut [Envelope]) -> Result<()> {
-        if list.is_empty() || mailbox.eq_ignore_ascii_case(IMPORTANT) {
+        if list.is_empty() {
             return Ok(());
         }
         let ids: Vec<&str> = list.iter().map(|e| e.id.as_str()).collect();
         let bytes = self.raw(&[
             format!("EXAMINE {}", imap_quote(mailbox)),
-            format!("UID FETCH {} (UID X-GM-LABELS)", ids.join(",")),
+            format!("UID FETCH {} (UID X-GM-LABELS X-GM-THRID)", ids.join(",")),
         ])?;
         let text = String::from_utf8_lossy(&bytes);
-        let important: std::collections::HashSet<String> = text
-            .lines()
-            .filter(|l| l.starts_with("* ") && l.contains("\\Important"))
-            .filter_map(|l| {
-                let at = l.find("UID ")? + 4;
-                Some(l[at..].chars().take_while(|c| c.is_ascii_digit()).collect::<String>())
-            })
-            .collect();
+        let mut found: std::collections::HashMap<String, (bool, Option<String>)> = Default::default();
+        for l in text.lines().filter(|l| l.starts_with("* ") && l.contains(" FETCH ")) {
+            let Some(at) = l.find("UID ").map(|i| i + 4) else { continue };
+            let uid: String = l[at..].chars().take_while(|c| c.is_ascii_digit()).collect();
+            found.insert(uid, (l.contains("\\Important"), thread_id(l)));
+        }
+        let all_important = mailbox.eq_ignore_ascii_case(IMPORTANT);
         for e in list.iter_mut() {
-            e.important = important.contains(&e.id);
+            if let Some((important, thread)) = found.get(&e.id) {
+                e.important = all_important || *important;
+                e.thread = thread.clone();
+            }
         }
         Ok(())
+    }
+
+    /// A conversation's messages from All Mail (your replies included),
+    /// headers only, newest `limit`.
+    pub fn thread(&mut self, thread: &str, limit: usize) -> Result<Vec<Envelope>> {
+        let list = self.retry(|s| s.thread_once(thread, limit))?;
+        Ok(self.stamp(list))
+    }
+
+    fn thread_once(&mut self, thread: &str, limit: usize) -> Result<Vec<Envelope>> {
+        if !thread.chars().all(|c| c.is_ascii_digit()) || thread.is_empty() {
+            return Err(anyhow!("not a Gmail thread id"));
+        }
+        let found = self.raw(&[format!("EXAMINE {}", imap_quote(ALL_MAIL)), format!("UID SEARCH X-GM-THRID {thread}")])?;
+        let text = String::from_utf8_lossy(&found);
+        let mut uids: Vec<u64> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix("* SEARCH"))
+            .flat_map(|rest| rest.split_whitespace().filter_map(|n| n.parse().ok()).collect::<Vec<_>>())
+            .collect();
+        uids.sort_unstable();
+        let newest: Vec<String> = uids.iter().rev().take(limit).map(|u| u.to_string()).collect();
+        if newest.is_empty() {
+            return Ok(Vec::new());
+        }
+        let bytes = self.raw(&[format!(
+            "UID FETCH {} (UID FLAGS X-GM-LABELS X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])",
+            newest.join(",")
+        )])?;
+        let mut list = parse_header_fetch(ALL_MAIL, &bytes);
+        list.sort_by_key(|e| e.ts);
+        Ok(list)
     }
 
     /// (UIDNEXT, unread, total) of a mailbox without opening it: cheap
@@ -308,7 +344,7 @@ impl Session {
     fn headers_in_range_unstamped_once(&mut self, mailbox: &str, lo: u64, hi: u64) -> Result<Vec<Envelope>> {
         let bytes = self.raw(&[
             format!("EXAMINE {}", imap_quote(mailbox)),
-            format!("UID FETCH {lo}:{hi} (UID FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])"),
+            format!("UID FETCH {lo}:{hi} (UID FLAGS X-GM-LABELS X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])"),
         ])?;
         Ok(parse_header_fetch(mailbox, &bytes))
     }
@@ -388,7 +424,7 @@ impl Session {
             return Ok(Vec::new());
         }
         let fetched = self.raw(&[format!(
-            "UID FETCH {} (UID FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])",
+            "UID FETCH {} (UID FLAGS X-GM-LABELS X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])",
             newest.join(",")
         )])?;
         if std::env::var("GPUI_MAIL_DEBUG").is_ok() {
@@ -985,6 +1021,13 @@ fn escape_html(s: &str) -> String {
 }
 
 /// IMAP quoted string.
+/// The number after `X-GM-THRID` in a FETCH reply.
+pub fn thread_id(line: &str) -> Option<String> {
+    let at = line.find("X-GM-THRID ")? + "X-GM-THRID ".len();
+    let id: String = line[at..].chars().take_while(|c| c.is_ascii_digit()).collect();
+    (!id.is_empty()).then_some(id)
+}
+
 /// The list in `X-GM-LABELS (...)`: quoted strings and bare atoms.
 pub fn parse_gm_labels(line: &str) -> Vec<String> {
     let Some(at) = line.find("X-GM-LABELS (") else { return Vec::new() };
@@ -1149,6 +1192,7 @@ fn parse_header_fetch(mailbox: &str, bytes: &[u8]) -> Vec<Envelope> {
             attachments: Vec::new(),
             account: Default::default(),
             to,
+            thread: thread_id(&meta),
             labels: parse_gm_labels(&meta),
         });
     }
@@ -1208,7 +1252,12 @@ fn to_model(mailbox: &str, e: io_email::envelope::types::Envelope) -> Envelope {
         important,
         attachments: Vec::new(),
         account: Default::default(),
-        to: Vec::new(),
+        to: e
+            .to
+            .iter()
+            .map(|a| (a.name.clone().unwrap_or_default().trim().to_string(), a.email.clone()))
+            .collect(),
+        thread: None,
         labels: Vec::new(),
     }
 }
@@ -1253,7 +1302,7 @@ pub fn check() -> Result<()> {
 
 #[cfg(test)]
 mod label_tests {
-    use super::{is_dropped, parse_gm_labels, parse_header_fetch};
+    use super::{is_dropped, parse_gm_labels, parse_header_fetch, thread_id};
 
     #[test]
     fn connection_slots_are_capped_and_returned() {
@@ -1306,6 +1355,17 @@ mod label_tests {
         assert_eq!((e.id.as_str(), e.from_email.as_ref(), e.unread), ("812", "deals@shop.test", false));
         assert_eq!(e.to, [("Me".into(), "me@acme.test".into()), ("".into(), "team@acme.test".into()), ("Boss, The".into(), "boss@acme.test".into())]);
         assert_eq!(e.labels, ["\\Important", "Work", "Clients/Acme"]);
+        assert_eq!(e.thread, None, "no X-GM-THRID in this reply");
+        assert_eq!(thread_id("* 3 FETCH (UID 9 X-GM-THRID 1791234567890123456 X-GM-LABELS ())"), Some("1791234567890123456".into()));
+        assert_eq!(thread_id("* 3 FETCH (UID 9)"), None);
         assert!(e.important);
+    }
+
+    #[test]
+    fn decodes_older_charsets_in_subjects() {
+        let headers = "From: b@x.com\r\nSubject: Re: =?ISO-2022-JP?B?TGVkZ2VyIBskQiIqGyhCIExJTVM=?= testing\r\n\r\n";
+        let reply = format!("* 1 FETCH (UID 5 BODY[HEADER.FIELDS (FROM SUBJECT)] {{{}}}\r\n{headers})\r\n", headers.len());
+        let list = parse_header_fetch("INBOX", reply.as_bytes());
+        assert_eq!(list[0].subject.as_ref(), "Re: Ledger \u{2192} LIMS testing");
     }
 }

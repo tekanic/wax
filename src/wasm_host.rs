@@ -579,6 +579,7 @@ mod tests {
             attachments: Vec::new(),
             account: Default::default(),
             to: Vec::new(),
+            thread: None,
             labels: Vec::new(),
         }
     }

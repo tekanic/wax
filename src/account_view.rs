@@ -511,15 +511,17 @@ impl MailApp {
             )
     }
 
-    // ----- All Inboxes ----------------------------------------------------------
+    // ----- All Inboxes, All Sent -------------------------------------------------
 
-    /// Every account's Inbox in one list, newest first. Cached mail shows at
-    /// once; each account's Inbox is then refreshed on its own connection.
-    pub fn open_unified(&mut self, cx: &mut Context<Self>) {
+    /// Every account's Inbox (or Sent) in one list, newest first. Cached
+    /// mail shows at once; each account is then refreshed on its own
+    /// connection.
+    pub fn open_unified(&mut self, mailbox: &'static str, cx: &mut Context<Self>) {
         if self.accounts.is_empty() {
             return;
         }
         self.unified = true;
+        self.unified_box = mailbox;
         self.sweep = None;
         self.row_menu = None;
         self.query.clear();
@@ -529,7 +531,7 @@ impl MailApp {
         if let Some(store) = &self.store {
             let store = store.lock().unwrap();
             for a in &self.accounts {
-                all.extend(store.envelopes(&a.email, mail::INBOX, PAGE_SIZE).unwrap_or_default());
+                all.extend(store.envelopes(&a.email, mailbox, PAGE_SIZE).unwrap_or_default());
             }
         }
         all.sort_by(|a, b| b.ts.cmp(&a.ts));
@@ -543,24 +545,25 @@ impl MailApp {
         cx.notify();
     }
 
-    /// Re-read one account's Inbox into All Inboxes.
+    /// Re-read one account's Inbox (or Sent) into the combined list.
     pub fn refresh_unified_account(&mut self, account: &str, cx: &mut Context<Self>) {
         let Some(session) = self.preview_of(account) else { return };
         let Some(store) = self.store.clone() else { return };
         let account = account.to_string();
+        let mailbox = self.unified_box;
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let a = account.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let fresh = session.lock().unwrap().envelopes(mail::INBOX, PAGE_SIZE)?;
+                    let fresh = session.lock().unwrap().envelopes(mailbox, PAGE_SIZE)?;
                     let mut store = store.lock().unwrap();
-                    store.save_envelopes(&a, mail::INBOX, &fresh)?;
-                    store.envelopes(&a, mail::INBOX, PAGE_SIZE)
+                    store.save_envelopes(&a, mailbox, &fresh)?;
+                    store.envelopes(&a, mailbox, PAGE_SIZE)
                 })
                 .await;
             this.update(cx, |this, cx| {
-                if !this.unified || !this.query.is_empty() {
+                if !this.unified || this.unified_box != mailbox || !this.query.is_empty() {
                     return;
                 }
                 match result {
@@ -574,7 +577,7 @@ impl MailApp {
                             .filter(|e| e.account.as_ref() == account && e.body.is_some())
                             .map(|e| (e.key(), e.clone()))
                             .collect();
-                        merged.extend(list.into_iter().map(|e| loaded.get(&e.key()).cloned().map(|old| Envelope { unread: e.unread, starred: e.starred, important: e.important, ..old }).unwrap_or(e)));
+                        merged.extend(list.into_iter().map(|e| loaded.get(&e.key()).cloned().map(|old| Envelope { unread: e.unread, starred: e.starred, important: e.important, to: e.to.clone(), thread: e.thread.clone(), ..old }).unwrap_or(e)));
                         merged.sort_by(|a, b| b.ts.cmp(&a.ts));
                         this.set_envelopes(merged, cx);
                         this.has_more = false;
@@ -630,7 +633,7 @@ impl MailApp {
             );
         }
         if self.accounts.len() > 1 {
-            let on = self.unified && self.sweep.is_none();
+            let on = self.unified && self.unified_box == mail::INBOX && self.sweep.is_none();
             let unseen: u64 = self.watch.values().map(|w| w.unseen).sum();
             b = b.child(
                 div()
@@ -651,11 +654,36 @@ impl MailApp {
                             this.search.update(cx, |s, cx| s.set_value("", w, cx));
                         }
                         this.close_sweep(w, cx);
-                        this.open_unified(cx)
+                        this.open_unified(mail::INBOX, cx)
                     }))
                     .child(svg().path("icons/inbox.svg").size(px(16.)).flex_none().text_color(rgb(ACCENT)))
                     .child(div().flex_1().child("All Inboxes"))
                     .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(rgb(ACCENT)).child(unseen.to_string()))),
+            );
+            let on = self.unified && self.unified_box == mail::SENT && self.sweep.is_none();
+            b = b.child(
+                div()
+                    .id("all-sent")
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(10.))
+                    .h(px(30.))
+                    .px(px(10.))
+                    .rounded(px(6.))
+                    .cursor_pointer()
+                    .text_color(rgb(if on { TEXT } else { SUBTLE }))
+                    .when(on, |d| d.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM))
+                    .when(!on, |d| d.hover(|d| d.bg(rgb(HOVER)).text_color(rgb(TEXT))))
+                    .on_click(cx.listener(|this, _, w, cx| {
+                        if !this.query.is_empty() {
+                            this.search.update(cx, |s, cx| s.set_value("", w, cx));
+                        }
+                        this.close_sweep(w, cx);
+                        this.open_unified(mail::SENT, cx)
+                    }))
+                    .child(svg().path("icons/send.svg").size(px(16.)).flex_none().text_color(rgb(ACCENT)))
+                    .child(div().flex_1().child("All Sent")),
             );
         }
         for a in &self.accounts {

@@ -175,7 +175,8 @@ impl MailApp {
     pub fn show_arrivals(&mut self, account: &str, kept: Vec<Envelope>, cx: &mut Context<Self>) {
         let active = *self.account == *account;
         let in_inbox = self.query.is_empty()
-            && (self.unified || (active && self.active().is_some_and(|m| m.name.eq_ignore_ascii_case(mail::INBOX))));
+            && ((self.unified && self.unified_box == mail::INBOX)
+                || (!self.unified && active && self.active().is_some_and(|m| m.name.eq_ignore_ascii_case(mail::INBOX))));
         if in_inbox {
             let keep = self.envelopes.get(self.selected).map(|e| e.key());
             let have: HashSet<(String, String)> = self.envelopes.iter().map(|e| e.key()).collect();

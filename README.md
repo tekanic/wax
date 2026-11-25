@@ -33,7 +33,13 @@ integrations) will ship as sandboxed WebAssembly plugins.
 - [x] Refresh: server window upserted into the cache; archived/deleted rows dropped
 - [x] Search box (`cmd-f` or `/`) over all cached mail, de-duplicated across Gmail folders
       (`cargo run -- --search <terms>` from the shell)
-- [x] Server-side search (Gmail `X-GM-RAW`, all of All Mail), merged with local hits
+- [x] Server-side search (Gmail `X-GM-RAW`, all of All Mail), merged with local hits.
+      In Sent (an account's, or All Sent) search stays in sent mail and matches
+      recipients too: who you wrote to, the subject or the text.
+- [x] Conversations: reading a message shows every message in its Gmail thread
+      (X-GM-THRID), your replies included, above it; click one to read it in place.
+      List rows show the conversation's size beside the name. Sent rows show who
+      the message went to.
 - [x] Read state syncs to Gmail (open = read, `u` toggles), rolled back on failure
 - [x] Older mail: scroll loads the next 200 (cache first, then Gmail); background
       header sync of All Mail (~34k messages in ~75 s, resumable, UIDVALIDITY-aware)
@@ -253,10 +259,11 @@ sees your password. Tokens are kept in the macOS Keychain (service
 `gpui-mail-google`). Each account has its own sender name, default signatures,
 From addresses and sender rules, and its own new-mail watcher.
 
-The sidebar keeps **All Inboxes** and your accounts pinned at the top (visible
-however short the window), with the folders of the account on screen below.
-All Inboxes merges every account's Inbox, newest first, each row tagged with its
-account; reading, replying, archiving, starring and sender decisions there act on
+The sidebar keeps **All Inboxes**, **All Sent** and your accounts pinned at the
+top (visible however short the window), with the folders of the account on
+screen below. All Inboxes merges every account's Inbox, newest first, each row
+tagged with its account; All Sent does the same for Sent, and a search there
+covers every account's sent mail; reading, replying, archiving, starring and sender decisions there act on
 the message's own account.
 
 Google sign-in needs an OAuth client:

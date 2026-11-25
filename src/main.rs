@@ -15,6 +15,7 @@ mod compose;
 mod errlog;
 mod compose_view;
 mod config_watch;
+mod conversation;
 mod files;
 mod formatting;
 mod html_view;
@@ -63,8 +64,8 @@ const SERVER_SEARCH_DELAY: std::time::Duration = std::time::Duration::from_milli
 const SERVER_SEARCH_LIMIT: u32 = 100;
 /// UIDs per background-sync batch (Gmail UIDs are sparse: ~10% used).
 const SYNC_WINDOW: u64 = 5_000;
-const ALL_MAIL: &str = "[Gmail]/All Mail";
-const SENT: &str = "[Gmail]/Sent Mail";
+const ALL_MAIL: &str = mail::ALL_MAIL;
+const SENT: &str = mail::SENT;
 const ROW_HEIGHT: f32 = 78.;
 const SIDEBAR_WIDTH: f32 = 210.;
 const LIST_WIDTH: f32 = 360.;
@@ -297,8 +298,14 @@ struct MailApp {
     /// acting on their messages), and those being opened.
     pool: std::collections::HashMap<String, SharedSession>,
     pool_connecting: HashSet<String>,
-    /// The list shows every account's Inbox together.
+    /// The list shows every account's Inbox (or Sent) together.
     unified: bool,
+    /// Which folder `unified` combines: mail::INBOX or mail::SENT.
+    unified_box: &'static str,
+    /// The conversation of the message being read (conversation.rs).
+    conversation: Option<conversation::Conversation>,
+    /// Messages per conversation for the rows on screen, by (account, thread).
+    thread_counts: std::collections::HashMap<(String, String), usize>,
     /// The status text as last drawn, and when it appeared (so it fades).
     status_seen: SharedString,
     /// Failed attempts to connect the account on screen (for backing off).
@@ -424,6 +431,9 @@ impl MailApp {
             pool: Default::default(),
             pool_connecting: HashSet::new(),
             unified: false,
+            unified_box: mail::INBOX,
+            conversation: None,
+            thread_counts: Default::default(),
             label_picker: None,
             labels_pane: None,
             status_seen: SharedString::default(),
@@ -598,7 +608,7 @@ impl MailApp {
                 this.prefetch(0..PREFETCH_AHEAD, cx);
                 if !this.query.is_empty() {
                     let query = this.query.clone();
-                    this.search_server(query, cx);
+                    this.search_servers(query, cx);
                 }
             })
             .ok();
@@ -658,7 +668,7 @@ impl MailApp {
                     } else {
                         // A search typed while connecting: ask Gmail now.
                         let query = this.query.clone();
-                        this.search_server(query, cx);
+                        this.search_servers(query, cx);
                     }
                 }
                 Err(err) => {
@@ -711,12 +721,25 @@ impl MailApp {
             .unwrap_or(0);
         self.scroll.scroll_to_item(self.selected, ScrollStrategy::Top);
         self.load_body(self.selected, cx);
+        self.refresh_thread_counts();
+        self.load_conversation(cx);
         self.prefetch(0..PREFETCH_AHEAD, cx);
         cx.notify();
     }
 
+    /// Where a search looks: each (account, folder to stay in). All Sent
+    /// searches every account's Sent; All Inboxes every account's mail; an
+    /// account's Sent folder its Sent; anything else the whole account.
+    fn search_scope(&self) -> Vec<(String, Option<&'static str>)> {
+        if self.unified {
+            let folder = (self.unified_box == SENT).then_some(SENT);
+            return self.accounts.iter().map(|a| (a.email.clone(), folder)).collect();
+        }
+        let sent = self.active().is_some_and(|m| m.name.eq_ignore_ascii_case(SENT));
+        vec![(self.account.to_string(), sent.then_some(SENT))]
+    }
+
     fn run_search(&mut self, query: String, cx: &mut Context<Self>) {
-        let acct = self.account.clone();
         if query == self.query {
             return;
         }
@@ -724,17 +747,30 @@ impl MailApp {
         if query.is_empty() {
             self.selected = 0;
             self.envelopes.clear();
-            self.open_mailbox(self.active_mailbox, cx);
+            if self.unified {
+                self.open_unified(self.unified_box, cx);
+            } else {
+                self.open_mailbox(self.active_mailbox, cx);
+            }
             return;
         }
-        let query_for_server = query.clone();
         self.server_searching = false;
         let Some(store) = self.store.clone() else { return };
+        let local_scope = self.search_scope();
+        let for_servers = query.clone();
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let q = query.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move { store.lock().unwrap().search(&*acct, &q, PAGE_SIZE * 2) })
+                .spawn(async move {
+                    let store = store.lock().unwrap();
+                    let mut all: Vec<Envelope> = Vec::new();
+                    for (acct, folder) in &local_scope {
+                        all.extend(store.search_in(acct, *folder, &q, PAGE_SIZE * 2).unwrap_or_default());
+                    }
+                    all.sort_by(|a, b| b.ts.cmp(&a.ts));
+                    all
+                })
                 .await;
             this.update(cx, |this, cx| {
                 if this.query != query {
@@ -742,28 +778,26 @@ impl MailApp {
                 }
                 this.selected = 0;
                 this.envelopes.clear();
-                this.set_envelopes(result.unwrap_or_default(), cx);
+                this.set_envelopes(result, cx);
             })
             .ok();
         })
         .detach();
-        self.search_server(query_for_server, cx);
+        self.search_servers(for_servers, cx);
+    }
+
+    /// Ask Gmail on every account the search covers.
+    fn search_servers(&mut self, query: String, cx: &mut Context<Self>) {
+        for (acct, folder) in self.search_scope() {
+            self.search_server(query.clone(), acct, folder, cx);
+        }
     }
 
     /// After a pause in typing, ask Gmail too (it sees the whole mailbox,
     /// not just the cache) and merge its hits into the local results.
-    fn search_server(&mut self, query: String, cx: &mut Context<Self>) {
-        let acct = self.account.clone();
-        let Some(session) = self.preview_session.clone().or_else(|| self.session.clone()) else {
-            return;
-        };
-        let mailbox = self
-            .mailboxes
-            .iter()
-            .find(|m| m.name.eq_ignore_ascii_case("[Gmail]/All Mail"))
-            .or(self.active())
-            .map(|m| m.name.to_string());
-        let Some(mailbox) = mailbox else { return };
+    fn search_server(&mut self, query: String, acct: String, folder: Option<&'static str>, cx: &mut Context<Self>) {
+        let Some(session) = self.preview_of(&acct) else { return };
+        let mailbox = folder.unwrap_or(ALL_MAIL).to_string();
         let store = self.store.clone();
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             cx.background_executor().timer(SERVER_SEARCH_DELAY).await;
@@ -781,19 +815,16 @@ impl MailApp {
                 return;
             }
             let q = query.clone();
+            let a = acct.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     let hits = session.lock().unwrap().search(&mailbox, &q, SERVER_SEARCH_LIMIT)?;
                     let Some(store) = store else { return anyhow::Ok(hits) };
                     let mut store = store.lock().unwrap();
-                    store.upsert_envelopes(&*acct, &hits)?;
+                    store.upsert_envelopes(&a, &hits)?;
                     // Pick up previews/bodies already cached for these messages.
-                    anyhow::Ok(
-                        hits.into_iter()
-                            .map(|h| store.lookup(&*acct, &h.mailbox, &h.id).unwrap_or(h))
-                            .collect::<Vec<_>>(),
-                    )
+                    anyhow::Ok(hits.into_iter().map(|h| store.lookup(&a, &h.mailbox, &h.id).unwrap_or(h)).collect::<Vec<_>>())
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -804,7 +835,7 @@ impl MailApp {
                 match result {
                     Ok(hits) => this.merge_results(hits, cx),
                     Err(err) => {
-                        this.status = format!("Gmail search failed: {err:#}").into();
+                        this.status = format!("Gmail search failed ({acct}): {err:#}").into();
                         this.status_is_error = true;
                         cx.notify();
                     }
@@ -1886,7 +1917,7 @@ impl MailApp {
     fn restore_items(&mut self, items: Vec<Envelope>, cx: &mut Context<Self>) {
         let visible = |e: &Envelope| {
             !self.query.is_empty()
-                || (self.unified && e.mailbox.eq_ignore_ascii_case(mail::INBOX))
+                || (self.unified && e.mailbox.eq_ignore_ascii_case(self.unified_box))
                 || (!self.unified && self.active().map(|m| m.name.as_ref()) == Some(e.mailbox.as_str()))
         };
         let back: Vec<Envelope> = items.into_iter().filter(|e| visible(e)).collect();
@@ -2024,6 +2055,22 @@ impl MailApp {
         }
     }
 
+    /// A body that couldn't be fetched: shown, never cached, so it's tried
+    /// again next time.
+    pub fn show_body_error(&mut self, account: &str, mailbox: &str, id: &str, text: String, cx: &mut Context<Self>) {
+        if let Some(c) = &mut self.conversation {
+            for e in c.items.iter_mut().filter(|e| e.mailbox == mailbox && e.id == id && e.body.is_none()) {
+                e.body = Some(text.clone().into());
+            }
+        }
+        if let Some(e) = self.envelopes.iter_mut().find(|e| e.is(account, mailbox, id)) {
+            if e.body.is_none() {
+                e.body = Some(text.into());
+            }
+        }
+        cx.notify();
+    }
+
     fn apply_body(
         &mut self,
         account: &str,
@@ -2034,6 +2081,8 @@ impl MailApp {
         files: Vec<model::Attachment>,
         cx: &mut Context<Self>,
     ) {
+        self.apply_body_to_conversation(account, mailbox, id, &text, &html, &files);
+        cx.notify();
         let acct = account.to_string();
         let preview = make_preview(&text);
         if let Some(store) = self.store.clone() {
@@ -2149,10 +2198,9 @@ impl MailApp {
                 .background_executor()
                 .spawn(async move { session.lock().unwrap().body(&mb, &fetch_id) })
                 .await;
-            this.update(cx, |this, cx| {
-                let (text, html, files) =
-                    result.unwrap_or_else(|err| (format!("Could not load message: {err:#}"), None, Vec::new()));
-                this.apply_body(&account, &mailbox, &id, text, html, files, cx);
+            this.update(cx, |this, cx| match result {
+                Ok((text, html, files)) => this.apply_body(&account, &mailbox, &id, text, html, files, cx),
+                Err(err) => this.show_body_error(&account, &mailbox, &id, format!("Could not load message: {err:#}"), cx),
             })
             .ok();
         })
@@ -2169,6 +2217,7 @@ impl MailApp {
         }
         self.scroll.scroll_to_item(ix, ScrollStrategy::Center);
         self.load_body(ix, cx);
+        self.load_conversation(cx);
         self.prefetch(ix + 1..ix + 1 + PREFETCH_AHEAD / 2, cx);
         cx.notify();
     }
@@ -2896,9 +2945,19 @@ impl MailApp {
                                     .child(
                                         div()
                                             .min_w_0()
-                                            .truncate()
-                                            .font_weight(if e.unread { FontWeight::BOLD } else { FontWeight::MEDIUM })
-                                            .child(e.from.clone()),
+                                            .flex()
+                                            .items_baseline()
+                                            .gap_1p5()
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .truncate()
+                                                    .font_weight(if e.unread { FontWeight::BOLD } else { FontWeight::MEDIUM })
+                                                    .child(self.row_title(e)),
+                                            )
+                                            .children(self.row_thread_count(e).map(|n| {
+                                                div().flex_none().text_xs().text_color(rgb(MUTED)).child(n.to_string())
+                                            })),
                                     )
                                     .child(
                                         div()
@@ -3076,7 +3135,7 @@ impl MailApp {
         let title: SharedString = if searching {
             "Search results".into()
         } else if self.unified {
-            "All Inboxes".into()
+            if self.unified_box == SENT { "All Sent" } else { "All Inboxes" }.into()
         } else {
             self.active().map(|m| m.label.clone()).unwrap_or_else(|| "Mail".into())
         };
@@ -3168,7 +3227,8 @@ impl MailApp {
 
     fn render_reader(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let reader = div().flex_1().min_w_0().h_full().flex().flex_col().overflow_hidden();
-        let Some(e) = self.envelopes.get(self.selected) else {
+        let strip = self.render_conversation_strip(cx);
+        let Some(e) = self.reading() else {
             return reader
                 .items_center()
                 .justify_center()
@@ -3225,7 +3285,10 @@ impl MailApp {
                                         .flex()
                                         .flex_col()
                                         .child(div().truncate().font_weight(FontWeight::MEDIUM).child(e.from.clone()))
-                                        .child(div().truncate().text_xs().text_color(rgb(MUTED)).child(e.from_email.clone())),
+                                        .child(div().truncate().text_xs().text_color(rgb(MUTED)).child(e.from_email.clone()))
+                                        .when(!e.to.is_empty(), |d| {
+                                            d.child(div().truncate().text_xs().text_color(rgb(MUTED)).child(conversation::recipients_line(&e.to)))
+                                        }),
                                 )
                                 .child(div().flex_none().text_xs().text_color(rgb(MUTED)).child(e.date.clone())),
                         )
@@ -3270,7 +3333,7 @@ impl MailApp {
                     )
             });
             // The web view is laid over this placeholder.
-            return reader.child(header).children(bar).child(
+            return reader.children(strip).child(header).children(bar).child(
                 div()
                     .flex_1()
                     .min_h_0()
@@ -3282,7 +3345,7 @@ impl MailApp {
                     .child(self.html_view.placeholder()),
             );
         }
-        reader.child(
+        reader.children(strip).child(
             div()
                 .id("reader")
                 .size_full()
@@ -3306,8 +3369,7 @@ impl Render for MailApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.track_status(cx);
         let html = self
-            .envelopes
-            .get(self.selected)
+            .reading()
             .filter(|_| self.composer.is_none() && self.pending_send.is_none() && self.after_send.is_none() && self.sweep.is_none())
             .and_then(|e| e.html.clone().map(|h| (e.key(), h)));
         let own = if self.settings_view.is_some() {

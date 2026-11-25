@@ -153,7 +153,7 @@ impl MailApp {
     /// Fetch attachment `index` of the selected message; then open it, or
     /// save it to Downloads.
     pub fn fetch_attachment(&mut self, index: usize, open: bool, cx: &mut Context<Self>) {
-        let Some(e) = self.envelopes.get(self.selected) else { return };
+        let Some(e) = self.reading() else { return };
         let account = self.account_of(e).to_string();
         let Some(session) = self.preview_of(&account) else { return };
         let (mailbox, id) = (e.mailbox.clone(), e.id.clone());
