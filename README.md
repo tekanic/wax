@@ -41,8 +41,8 @@ integrations) will ship as sandboxed WebAssembly plugins.
       The list shows one row per conversation (the newest message, with the
       thread's size); archive, delete, read/unread and labels act on the whole
       thread, star on its newest message. Settings → General → Message list
-      switches back to one row per message (`conversations` in settings.toml). Sent rows show who
-      the message went to.
+      switches back to one row per message (`conversations` in settings.toml).
+      Sent rows show who the message went to.
 - [x] Read state syncs to Gmail (open = read, `u` toggles), rolled back on failure
 - [x] Older mail: scroll loads the next 200 (cache first, then Gmail); background
       header sync of All Mail (~34k messages in ~75 s, resumable, UIDVALIDITY-aware)
@@ -59,7 +59,8 @@ integrations) will ship as sandboxed WebAssembly plugins.
       on screen read-only for a last review, under a countdown banner (8 lamps going
       out, pulsing number, then Sending… / Sent once Gmail accepts it) for 8 s: `esc`/`⌘Z` cancels, `⏎` sends now. Failures reopen the message
 - [x] Drafts: autosaved locally while typing (restored after a crash or quit);
-      `esc` saves to Gmail's Drafts; `⏎` on a message in Drafts reopens it;
+      `⌘S` or Save saves to Gmail's Drafts and keeps writing (saving again replaces
+      it); `esc` saves and closes; `⏎` or Edit on a message in Drafts reopens it;
       `⇧⌘⌫` discards
 - [x] Address suggestions in To/Cc from people you've written to (Sent folder,
       ranked first) and frequent senders; `↑↓` choose, `⏎`/`tab` add, `esc` dismiss
@@ -201,6 +202,7 @@ bindings, the hint bar at the bottom of the window and the `g` menu.
 | `esc` | search box, list | clear the search |
 | `c` / `r` / `a` / `f` | list | compose / reply / reply all / forward |
 | `⌘⏎` | writing | send (8 s to undo with `⌘Z`) |
+| `⌘S` | writing | save draft to Gmail, keep writing |
 | `esc` | writing | save draft to Gmail and close |
 | `⇧⌘⌫` | writing | discard |
 | `⌘B` `⌘I` `⌘⇧X` | writing | bold / italic / strikethrough (again to remove) |

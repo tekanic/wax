@@ -32,6 +32,7 @@ actions!(
         OpenDraft,
         SendMessage,
         CloseCompose,
+        SaveDraft,
         DiscardCompose,
         UndoSend,
         SuggestNext,
@@ -479,6 +480,7 @@ fn defaults() -> (Vec<Def>, Vec<Hint>) {
         .bind("escape", CloseMenu, Menu, Some(("esc", "close")))
         // Writing
         .bind("cmd-enter", SendMessage, Writing, Some(("⌘⏎", "send")))
+        .bind("cmd-s", SaveDraft, Writing, Some(("⌘S", "save draft")))
         .bind("escape", CloseCompose, Writing, Some(("esc", "save draft & close")))
         .bind("shift-cmd-backspace", DiscardCompose, Writing, Some(("⇧⌘⌫", "discard")))
         .bind("cmd-b", FormatBold, Writing, Some(("⌘B/⌘I", "bold/italic")))

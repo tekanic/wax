@@ -356,6 +356,7 @@ struct MailApp {
     composer: Option<ComposerState>,
     compose_subs: Vec<Subscription>,
     autosave_gen: u64,
+    saving_draft: bool,
     /// A sent message waiting out its undo window.
     pending_send: Option<PendingSend>,
     /// Focus target of the countdown overlay (its keys live there).
@@ -470,6 +471,7 @@ impl MailApp {
             composer: None,
             compose_subs: Vec::new(),
             autosave_gen: 0,
+            saving_draft: false,
             pending_send: None,
             countdown_focus: cx.focus_handle(),
             after_send: None,
@@ -1158,14 +1160,7 @@ impl MailApp {
             self.clear_snapshot(cx);
             return;
         }
-        // A draft belongs to the account it was written in, even if
-        // another one is on screen now (rare: that connects on the spot).
-        let acct: Arc<str> = if draft.account.is_empty() || *draft.account == *acct { acct } else { draft.account.as_str().into() };
-        let session = if acct == self.account {
-            self.session.clone()
-        } else {
-            Session::connect(&acct).ok().map(|s| Arc::new(Mutex::new(s)))
-        };
+        let (acct, session) = self.draft_session(&draft, acct);
         let Some(session) = session else {
             self.status = "Offline: the draft stays on this Mac until you reconnect".into();
             return;
@@ -1195,6 +1190,83 @@ impl MailApp {
                     Ok(()) => this.status = "Draft saved to Gmail".into(),
                     Err(err) => {
                         this.status = format!("Draft kept on this Mac; saving to Gmail failed: {err:#}").into();
+                        this.status_is_error = true;
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A draft belongs to the account it was written in, even if another
+    /// one is on screen now (rare: that connects on the spot).
+    fn draft_session(&self, draft: &Draft, here: Arc<str>) -> (Arc<str>, Option<SharedSession>) {
+        let acct: Arc<str> = if draft.account.is_empty() || *draft.account == *here { here } else { draft.account.as_str().into() };
+        let session = if acct == self.account {
+            self.session.clone()
+        } else {
+            Session::connect(&acct).ok().map(|s| Arc::new(Mutex::new(s)))
+        };
+        (acct, session)
+    }
+
+    /// ⌘S: save to Gmail's Drafts and keep writing. Saving again replaces
+    /// the earlier copy.
+    fn save_draft(&mut self, _: &SaveDraft, _: &mut Window, cx: &mut Context<Self>) {
+        if self.saving_draft {
+            return;
+        }
+        let Some(c) = &self.composer else { return };
+        let draft = c.draft(cx);
+        if draft.is_blank() {
+            self.status = "Nothing to save yet".into();
+            self.status_is_error = false;
+            cx.notify();
+            return;
+        }
+        let (acct, session) = self.draft_session(&draft, self.account.clone());
+        let Some(session) = session else {
+            self.status = "Offline: the draft stays on this Mac until you reconnect".into();
+            self.status_is_error = true;
+            cx.notify();
+            return;
+        };
+        let draft = self.with_sender(draft, &acct);
+        let old = draft.server_draft.clone();
+        self.saving_draft = true;
+        self.status = "Saving draft…".into();
+        self.status_is_error = false;
+        cx.notify();
+        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let replaced = old.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let (raw, _) = compose::build_message(&draft, &*acct, false, None)?;
+                    let mut session = session.lock().unwrap();
+                    let uid = session.save_draft(raw)?;
+                    if let Some((mb, id)) = &replaced {
+                        session.delete_message(mb, id).ok();
+                    }
+                    anyhow::Ok(uid)
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.saving_draft = false;
+                match result {
+                    Ok(uid) => {
+                        if let Some(c) = &mut this.composer {
+                            if c.server_draft == old {
+                                c.server_draft = (!uid.is_empty()).then(|| (mail::DRAFTS.to_string(), uid));
+                            }
+                        }
+                        this.save_snapshot_now(cx);
+                        this.status = format!("Draft saved to Gmail at {}", chrono::Local::now().format("%-I:%M %p")).into();
+                    }
+                    Err(err) => {
+                        this.status = format!("Could not save the draft to Gmail (it's kept on this Mac): {err:#}").into();
                         this.status_is_error = true;
                     }
                 }
@@ -1568,6 +1640,10 @@ impl MailApp {
                             .child(
                                 action_button("discard", "Discard", false)
                                     .on_click(cx.listener(|this, _, w, cx| this.discard_compose(&DiscardCompose, w, cx))),
+                            )
+                            .child(
+                                action_button("save-draft", if self.saving_draft { "Saving…" } else { "Save  ⌘S" }, false)
+                                    .on_click(cx.listener(|this, _, w, cx| this.save_draft(&SaveDraft, w, cx))),
                             )
                             .child(
                                 action_button("send", "Send  ⌘⏎", true)
@@ -3306,6 +3382,12 @@ impl MailApp {
                                             d.child(div().truncate().text_xs().text_color(rgb(MUTED)).child(conversation::recipients_line(&e.to)))
                                         }),
                                 )
+                                .when(e.mailbox == mail::DRAFTS && !self.unified, |d| {
+                                    d.child(
+                                        action_button("edit-draft", "Edit  ⏎", true)
+                                            .on_click(cx.listener(|this, _, w, cx| this.open_draft(&OpenDraft, w, cx))),
+                                    )
+                                })
                                 .child(div().flex_none().text_xs().text_color(rgb(MUTED)).child(e.date.clone())),
                         )
                         .children(self.render_attachments(e, cx))
@@ -3462,6 +3544,7 @@ impl Render for MailApp {
             .on_action(cx.listener(Self::open_draft))
             .on_action(cx.listener(Self::send_message))
             .on_action(cx.listener(Self::close_compose))
+            .on_action(cx.listener(Self::save_draft))
             .on_action(cx.listener(Self::discard_compose))
             .on_action(cx.listener(Self::undo_send))
             .on_action(cx.listener(|this, _: &SuggestNext, _, cx| this.suggest_move(1, cx)))
