@@ -158,6 +158,17 @@ by then. Pick a time or type one: `fri 9am`, `12/3 5pm`, `in 2 days`,
 every 30 seconds; snoozing again replaces the time, "Back to the Inbox now"
 unsnoozes. Its `config.toml` sets the morning and evening hours.
 
+**Phishing warnings** (`plugins/phishing`): new mail from someone you don't know
+gets a **Suspicious** label when it adds up to phishing, and the status bar says
+why: a display name claiming a known brand (PayPal, Microsoft, banks, carriers…)
+from a domain that isn't theirs, a lookalike of a brand's or a correspondent's
+domain (paypa1.com, ernco.com), a brand's name inside a stranger's domain, an
+address shown in the name that isn't the sender's, a punycode domain, or a
+contact's name from a new domain plus pressure wording ("quick favor", "gift
+card", "bank details"). Its `config.toml` sets the label, trusted domains and
+extra brands to protect. On 1,684 past messages from one-time senders it flagged
+2, both reasonable.
+
 **Filter rules** (`plugins/filter-rules`) acts on new mail, one rule per line:
 
 ```

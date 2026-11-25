@@ -1,0 +1,9 @@
+# Phishing warnings: new mail from someone you don't know that looks like
+# phishing gets this label, and the status bar says why.
+label = "Suspicious"
+
+# Domains never to flag, one line each:
+# trust = "example.com"
+
+# More names to protect, with their real domains:
+# brand = "Acme Bank: acmebank.com acme-online.com"

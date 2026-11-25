@@ -8,7 +8,8 @@ empty folder to a working plugin, then covers the whole interface.
 - Host: [`src/wasm_host.rs`](../src/wasm_host.rs)
 - Examples: [`plugins/sweep`](../plugins/sweep) (a sender view),
   [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail),
-  [`plugins/snooze`](../plugins/snooze) (commands with a menu of choices)
+  [`plugins/snooze`](../plugins/snooze) (commands with a menu of choices),
+  [`plugins/phishing`](../plugins/phishing) (scores new mail using `knows-sender` and `senders`)
 
 ## How plugins work
 

@@ -706,4 +706,22 @@ mod tests {
         assert!(acts.is_empty());
         assert!(problems[0].contains("refused"), "{problems:?}");
     }
+
+    #[test]
+    fn phishing_plugin_labels_and_says_why() {
+        let root = scratch("phishing");
+        let g = [Permission::ReadEnvelopes, Permission::ModifyMail];
+        let Some(()) = install(&root, "phishing", "wax_phishing.wasm", Some(&g), "label = \"Phishy\"\n") else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        let fake = Envelope { from: vec![Address { name: Some("PayPal".into()), email: "service@paypa1-help.net".into() }], ..mail("Your receipt", "x@y.z") };
+        let (acts, problems) = h.arrived(&fake);
+        assert!(problems.is_empty(), "{problems:?}");
+        let acts = &acts[0].1;
+        assert_eq!(acts[0], Action::AddLabel("Phishy".into()));
+        let Action::Notify(why) = &acts[1] else { panic!("{acts:?}") };
+        assert!(why.contains("Paypal") && why.contains("paypa1-help.net"), "{why}");
+        let real = Envelope { from: vec![Address { name: Some("PayPal".into()), email: "service@paypal.com".into() }], ..mail("Your receipt", "x@y.z") };
+        assert!(h.arrived(&real).0.is_empty());
+    }
 }
