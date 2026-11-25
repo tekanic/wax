@@ -251,6 +251,7 @@ fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: &[wa
             A::Notify(text) => notes.push(text.clone()),
             A::SnoozeUntil(_) => notes.push("snooze isn't available to plugins yet".into()),
             A::OpenDraft(_) => notes.push("opening drafts isn't available to plugins yet".into()),
+            A::FileSender(_) => notes.push("file-sender works only from a sender view".into()),
         }
     }
     Ok((moved, notes))

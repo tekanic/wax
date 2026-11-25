@@ -1,13 +1,13 @@
-//! The Sweep: tidy a mailbox by deciding about senders, not messages.
+//! Sender views (the Sweep): decide about senders, not messages.
 //!
-//! Senders are ranked by volume from the cached All Mail headers. One key
-//! per sender files all of their mail, past and future:
-//!   r  Reading       newsletters
-//!   c  Records       receipts, notifications
-//!   x  Screened Out  mail you don't want to see
-//!   i  Keep          stays in the Inbox (remembered, no change)
-//! On Gmail a destination is a label: the sender's mail gets the label and
-//! leaves the Inbox. A rule makes new mail from them do the same.
+//! The Sweep itself is a plugin (plugins/sweep): it ranks senders through
+//! the `senders` host call and chooses the keys and where each files a
+//! sender's mail. The core draws the view, holds each `file-sender`
+//! decision for the undo window, then writes the sender rule and moves the
+//! mail: on Gmail the sender's mail gets the label and leaves the Inbox,
+//! and the rule makes new mail from them do the same. Sender rules stay in
+//! the core because the Screener and block/allow in the message list use
+//! them too.
 
 use super::*;
 use crate::store::SenderStat;
@@ -85,6 +85,10 @@ pub struct SweepState {
     /// Recent subjects of the selected sender.
     pub preview: Vec<(String, i64)>,
     pub loading: bool,
+    /// The plugin whose view this is, and what it showed.
+    pub plugin: String,
+    pub title: String,
+    pub keys: Vec<wasm_host::ViewKey>,
 }
 
 /// A decision held for the undo window before Gmail is changed.
@@ -114,21 +118,34 @@ fn dest_label(dest: &str) -> &str {
     }
 }
 
-fn dest_color(dest: &str) -> u32 {
-    match dest {
-        READING => 0x4f8ff7,
-        RECORDS => 0xc9a227,
-        SCREENED => 0xf87171,
-        _ => 0x34d058,
+/// A rule's colour: the view key with the same label, if any.
+fn dest_color(keys: &[wasm_host::ViewKey], dest: &str) -> u32 {
+    keys.iter().find(|k| k.label.eq_ignore_ascii_case(dest_label(dest))).map(|k| k.color).unwrap_or(SUBTLE)
+}
+
+fn to_wit(r: &SenderStat) -> wasm_host::Sender {
+    wasm_host::Sender {
+        email: r.email.clone(),
+        name: r.name.clone(),
+        count: r.count,
+        unread: r.unread,
+        latest: r.last_ts,
+        rule: r.rule.clone(),
     }
 }
 
 impl MailApp {
     pub fn open_sweep(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let acct = self.account.clone();
         if self.composer.is_some() {
             return;
         }
+        let Some(host) = self.wasm.clone() else {
+            self.status = "Plugins are still loading".into();
+            self.status_is_error = false;
+            cx.notify();
+            return;
+        };
+        let acct = self.account.to_string();
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         self.sweep = Some(SweepState {
@@ -138,25 +155,50 @@ impl MailApp {
             focus,
             preview: Vec::new(),
             loading: true,
+            plugin: String::new(),
+            title: "Sweep".into(),
+            keys: Vec::new(),
         });
         cx.notify();
-        let Some(store) = self.store.clone() else { return };
-        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let rows = cx
-                .background_executor()
-                .spawn(async move {
-                    store.lock().unwrap().sender_stats(&*acct, ALL_MAIL, &*acct, 500).unwrap_or_default()
-                })
-                .await;
-            this.update(cx, |this, cx| {
-                this.refresh_rules();
-                let mut rows = rows;
-                for r in &mut rows {
-                    r.rule = this.rules.get(&r.email).cloned();
+        cx.spawn_in(window, async move |this: WeakEntity<Self>, cx: &mut AsyncWindowContext| {
+            let (view, problems) = cx.background_executor().spawn(async move { host.lock().unwrap().sender_view(&acct) }).await;
+            this.update_in(cx, |this, window, cx| {
+                for p in &problems {
+                    crate::errlog::record(&this.account, p);
                 }
+                let Some((plugin, view)) = view else {
+                    this.close_sweep(window, cx);
+                    this.status = problems
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "The Sweep is a plugin: switch it on in Settings → Plugins".into())
+                        .into();
+                    this.status_is_error = !problems.is_empty();
+                    return;
+                };
+                this.refresh_rules();
+                let rows: Vec<SenderStat> = view
+                    .rows
+                    .into_iter()
+                    .map(|r| SenderStat {
+                        rule: this.rules.get(&r.email).cloned().or(r.rule),
+                        email: r.email,
+                        name: r.name,
+                        count: r.count,
+                        unread: r.unread,
+                        last_ts: r.latest,
+                    })
+                    .collect();
                 if let Some(sw) = &mut this.sweep {
                     sw.rows = rows;
                     sw.loading = false;
+                    sw.plugin = plugin;
+                    sw.title = view.title;
+                    sw.keys = view.keys;
+                }
+                if let Some(first) = problems.first() {
+                    this.status = first.clone().into();
+                    this.status_is_error = true;
                 }
                 this.load_sweep_preview(cx);
                 cx.notify();
@@ -208,23 +250,63 @@ impl MailApp {
         cx.notify();
     }
 
-    /// One key, one sender: record the decision now, change Gmail after the
-    /// undo window.
-    pub fn sweep_decide(&mut self, dest: &'static str, cx: &mut Context<Self>) {
-        let Some(sw) = &mut self.sweep else { return };
-        let Some(row) = sw.rows.get_mut(sw.selected) else { return };
-        if row.rule.as_deref() == Some(dest) {
-            return;
+    /// A key in the Sweep: if the plugin's view has it, ask the plugin
+    /// what to do with the selected sender. Returns whether it was a view key.
+    pub fn sweep_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+        let Some(sw) = &mut self.sweep else { return false };
+        if !sw.keys.iter().any(|k| k.key.eq_ignore_ascii_case(key)) {
+            return false;
         }
-        let previous = row.rule.replace(dest.to_string());
-        let (email, name, count) = (row.email.clone(), row.name.clone(), row.count);
+        let Some(who) = sw.rows.get(sw.selected).map(to_wit) else { return true };
+        let plugin = sw.plugin.clone();
         if sw.selected + 1 < sw.rows.len() {
             sw.selected += 1;
             sw.scroll.scroll_to_item(sw.selected, ScrollStrategy::Center);
         }
         self.load_sweep_preview(cx);
+        cx.notify();
+        let Some(host) = self.wasm.clone() else { return true };
         let account = self.account.to_string();
-        self.queue_sender(account, email, name, count, dest, previous, Vec::new(), cx);
+        let key = key.to_string();
+        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let acct = account.clone();
+            let (actions, problems) = cx.background_executor().spawn(async move { host.lock().unwrap().sender_key(&plugin, &acct, &who, &key) }).await;
+            this.update(cx, |this, cx| this.sweep_actions(account, actions, problems, cx)).ok();
+        })
+        .detach();
+        true
+    }
+
+    /// Carry out what a sender view's plugin answered.
+    fn sweep_actions(&mut self, account: String, actions: Vec<wasm_host::Action>, mut problems: Vec<String>, cx: &mut Context<Self>) {
+        for a in actions {
+            match a {
+                wasm_host::Action::FileSender(d) => {
+                    let dest = d.destination.unwrap_or_else(|| KEEP.to_string());
+                    let email = d.email.to_lowercase();
+                    let row = self.sweep.as_mut().and_then(|sw| sw.rows.iter_mut().find(|r| r.email.eq_ignore_ascii_case(&email)));
+                    let previous = match row {
+                        Some(r) if r.rule.as_deref() == Some(dest.as_str()) => continue,
+                        Some(r) => r.rule.replace(dest.clone()),
+                        None => self.rule_in(&account, &email),
+                    };
+                    self.queue_sender(account.clone(), email, d.name, d.count, &dest, previous, Vec::new(), cx);
+                }
+                wasm_host::Action::Notify(text) => {
+                    self.status = text.into();
+                    self.status_is_error = false;
+                }
+                _ => problems.push("A sender view can only file senders and notify".into()),
+            }
+        }
+        for p in &problems {
+            crate::errlog::record(&account, p);
+        }
+        if let Some(first) = problems.first() {
+            self.status = first.clone().into();
+            self.status_is_error = true;
+        }
+        cx.notify();
     }
 
     /// Hold a sender decision for the undo window, then apply it. Shared by
@@ -424,7 +506,7 @@ impl MailApp {
             .flex()
             .items_baseline()
             .justify_between()
-            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Sweep"))
+            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(sw.title.clone()))
             .child(div().text_xs().text_color(rgb(MUTED)).child(if sw.loading {
                 "Ranking senders…".to_string()
             } else {
@@ -468,6 +550,14 @@ impl MailApp {
         div()
             .track_focus(&sw.focus)
             .key_context("Sweep")
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
+                if ev.keystroke.modifiers.modified() || ev.is_held {
+                    return;
+                }
+                if this.sweep_key(&ev.keystroke.key, cx) {
+                    cx.stop_propagation();
+                }
+            }))
             .flex_1()
             .min_w_0()
             .h_full()
@@ -490,9 +580,9 @@ impl MailApp {
                         .px_2()
                         .rounded_sm()
                         .text_xs()
-                        .text_color(rgb(dest_color(dest)))
+                        .text_color(rgb(dest_color(&sw.keys, dest)))
                         .border_1()
-                        .border_color(rgb(dest_color(dest)))
+                        .border_color(rgb(dest_color(&sw.keys, dest)))
                         .when(pending, |d| d.opacity(0.6))
                         .child(dest_label(dest).to_string()),
                     None => div().text_xs().text_color(rgb(MUTED)).child("—"),
@@ -552,7 +642,6 @@ impl MailApp {
     fn render_sweep_side(&self) -> impl IntoElement {
         let Some(sw) = &self.sweep else { return div() };
         let row = sw.rows.get(sw.selected);
-        let keys = [("r", READING, "newsletters"), ("c", RECORDS, "receipts, notices"), ("x", SCREENED, "never see them"), ("i", "Keep", "stays in Inbox")];
         div()
             .w(px(320.))
             .flex_none()
@@ -596,15 +685,15 @@ impl MailApp {
             )
             .child(div().flex_1())
             .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(rgb(MUTED)).child("FILE ALL THEIR MAIL"))
-            .children(keys.into_iter().map(|(key, dest, what)| {
+            .children(sw.keys.iter().map(|k| {
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
                     .text_xs()
-                    .child(hint_chip(key, ""))
-                    .child(div().text_color(rgb(dest_color(if dest == "Keep" { KEEP } else { dest }))).child(dest))
-                    .child(div().text_color(rgb(MUTED)).child(what))
+                    .child(hint_chip(k.key.clone(), ""))
+                    .child(div().text_color(rgb(k.color)).child(k.label.clone()))
+                    .child(div().text_color(rgb(MUTED)).child(k.about.clone()))
             }))
     }
 }

@@ -121,7 +121,7 @@ get, so they can move out of the core later.
 
 After the built-ins, new Inbox mail goes to the WebAssembly plugins in
 `~/.config/wax/plugins/<id>/plugin.wasm` (interface: `wit/plugin.wit`,
-`wax:plugin@0.1.0`). Each call runs on a fresh instance with no files, no
+`wax:plugin@0.2.0`). Each call runs on a fresh instance with no files, no
 network, 64 MB of memory and a fuel limit, so a plugin that loops or runs away
 is stopped and switched off. A new plugin starts off; Settings → Plugins shows
 what it asks for and switches it on, which writes its `grants.toml`. Actions
@@ -131,7 +131,14 @@ beyond what was granted are refused. Each plugin reads its own `config.toml`.
 scripts/build-plugins.sh            # build plugins/* and install them
 ```
 
-The first plugin is **Filter rules** (`plugins/filter-rules`), one rule per line:
+**Writing one:** [docs/plugins.md](docs/plugins.md).
+
+**The Sweep** (`plugins/sweep`) is a plugin: it ranks senders and sets the keys
+and where each one files a sender's mail (`r = "Reading"   # newsletters` in its
+`config.toml`). Wax draws the view and keeps the sender rules, which the
+Screener and block/allow use too.
+
+**Filter rules** (`plugins/filter-rules`) acts on new mail, one rule per line:
 
 ```
 subject contains "invoice" => label "Receipts"
@@ -203,7 +210,7 @@ bindings, the hint bar at the bottom of the window and the `g` menu.
 | `⌫`, `#` | list | delete marked (or current) to Trash |
 | `⌘Z` | list | undo the last archive, delete or sender decision (8 s) |
 | `g w` | list | open the Sweep |
-| `r` / `c` / `x` / `i` | Sweep | Reading / Records / screen out / keep |
+| `r` / `c` / `x` / `i` | Sweep | Reading / Records / screen out / keep (set in the Sweep plugin's `config.toml`) |
 | `l` | list | label the message(s); ⇧⏎ in the picker also archives |
 | `⌘/` | anywhere | hide / show the hint bar |
 

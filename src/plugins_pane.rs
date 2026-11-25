@@ -8,11 +8,13 @@ use crate::wasm_host::{self, permission_about, write_grants};
 impl MailApp {
     /// Load (or reload) the plugins in the background.
     pub fn reload_plugins(&mut self, cx: &mut Context<Self>) {
+        let store = self.store.clone();
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let host = cx
                 .background_executor()
                 .spawn(async move {
                     let mut h = wasm_host::Host::new()?;
+                    h.store = store;
                     h.load();
                     anyhow::Ok(h)
                 })

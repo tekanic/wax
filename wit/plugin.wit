@@ -1,9 +1,13 @@
-// Wax plugin interface, v0.1.
+// Wax plugin interface, v0.2.
 //
-// Implemented by the host so far: manifest, on-message-received, and the
-// host functions log, config and storage. commands / run-command / panel
-// are called later; plugins return empty values for now. message-text and
-// http-get answer "not available yet".
+// Implemented by the host so far: manifest, on-message-received,
+// get-sender-view / on-sender-key, and the host functions log, config,
+// storage and senders. commands / run-command / panel are called later;
+// plugins return empty values for now. message-text and http-get answer
+// "not available yet".
+//
+// v0.2: sender views (the Sweep), the `senders` host function and the
+// `file-sender` action.
 //
 // Design rules:
 // - Plugins are WebAssembly components run by wasmtime, with no files, no
@@ -15,7 +19,7 @@
 // - Everything a plugin may read arrives as arguments or through `host`,
 //   which is permission-checked too.
 
-package wax:plugin@0.1.0;
+package wax:plugin@0.2.0;
 
 interface types {
     record address {
@@ -51,6 +55,48 @@ interface types {
         notify(string),
         /// Open the composer with a prefilled draft.
         open-draft(draft),
+        /// File all of a sender's mail, past and future: the core writes a
+        /// sender rule and moves their mail, after its undo window.
+        file-sender(sender-decision),
+    }
+
+    record sender-decision {
+        email: string,
+        name: string,
+        /// How many messages it covers, for the status bar.
+        count: u64,
+        /// A label, or none to keep them in the Inbox.
+        destination: option<string>,
+    }
+
+    /// Someone who sends you mail, from the local cache of All Mail.
+    record sender {
+        email: string,
+        name: string,
+        count: u64,
+        unread: u64,
+        /// Newest message, Unix seconds.
+        latest: s64,
+        /// Their sender rule: "keep" or a label name.
+        rule: option<string>,
+    }
+
+    /// A key in a sender view. Pressing it calls on-sender-key.
+    record view-key {
+        /// One character, e.g. "r".
+        key: string,
+        /// Shown in the legend; a row whose rule matches it is drawn in `color`.
+        label: string,
+        about: string,
+        /// 0xRRGGBB.
+        color: u32,
+    }
+
+    /// A keyboard-driven list of senders the core draws (the Sweep).
+    record sender-view {
+        title: string,
+        keys: list<view-key>,
+        rows: list<sender>,
     }
 
     record draft {
@@ -124,7 +170,7 @@ interface types {
 
 /// Services the core offers to plugins. Every call is permission-checked.
 interface host {
-    use types.{envelope};
+    use types.{envelope, sender};
 
     log: func(message: string);
 
@@ -138,13 +184,16 @@ interface host {
     /// Needs `network`, and the host must be in the manifest.
     http-get: func(url: string) -> result<string, string>;
 
+    /// Needs `read-envelopes`. Senders of an account by volume, at most `limit`.
+    senders: func(account: string, limit: u32) -> result<list<sender>, string>;
+
     /// Needs `storage`. Per-plugin key-value store.
     storage-get: func(key: string) -> option<string>;
     storage-set: func(key: string, value: string);
 }
 
 world plugin {
-    use types.{envelope, action, command, panel, manifest};
+    use types.{envelope, action, command, panel, manifest, sender, sender-view};
 
     import host;
 
@@ -162,4 +211,11 @@ world plugin {
 
     /// Optional sidebar panel; return none for no panel.
     export panel: func() -> option<panel>;
+
+    /// The Sweep: a sender view for an account, or none if this plugin has
+    /// none (needs `read-envelopes`). Opened with g w.
+    export get-sender-view: func(account: string) -> option<sender-view>;
+
+    /// A view key was pressed on a row of this plugin's sender view.
+    export on-sender-key: func(account: string, who: sender, key: string) -> result<list<action>, string>;
 }

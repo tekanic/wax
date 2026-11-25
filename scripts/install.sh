@@ -1,8 +1,10 @@
 #!/bin/zsh
 # Build Wax in release mode and install it as ~/Applications/Wax.app.
+# Builds and installs the plugins too (new ones start switched off).
 # Quits a running Wax first and opens the new one afterwards.
 set -e
 cd "$(dirname "$0")/.."
+scripts/build-plugins.sh
 cargo build --release
 scripts/bundle.sh release
 dest=${WAX_INSTALL_DIR:-$HOME/Applications}

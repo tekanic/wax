@@ -1,0 +1,14 @@
+# The Sweep: one key per sender files all of their mail, past and future.
+#
+#   <key> = "<label>"   # what it's for
+#
+# "keep" keeps them in the Inbox. Any other label is created in Gmail the
+# first time you use it. The comment after a key is shown beside it.
+
+r = "Reading"        # newsletters
+c = "Records"        # receipts, notices
+x = "Screened Out"   # never see them
+i = "keep"           # stays in the Inbox
+
+# How many senders to rank (most mail first).
+limit = 500

@@ -1,0 +1,21 @@
+[package]
+name = "wax-sweep"
+version = "0.2.0"
+edition = "2021"
+description = "Wax plugin: tidy a mailbox by deciding about senders, not messages"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+# Built on its own (scripts/build-plugins.sh), not part of the app's build.
+[workspace]

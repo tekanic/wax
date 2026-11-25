@@ -23,7 +23,7 @@ mod bindings {
 use bindings::wax;
 /// The generated bindings for one instance.
 type Plugin_ = bindings::Plugin;
-pub use wax::plugin::types::{Action, Address, Envelope, Manifest, Permission};
+pub use wax::plugin::types::{Action, Address, Envelope, Manifest, Permission, Sender, SenderView, ViewKey};
 
 /// wasmtime has its own error type.
 fn w<T>(r: wasmtime::Result<T>) -> Result<T> {
@@ -69,6 +69,8 @@ struct State {
     dir: PathBuf,
     grants: Vec<Permission>,
     logs: Vec<String>,
+    /// The mail cache, for `senders`.
+    store: Option<crate::SharedStore>,
 }
 
 impl WasiView for State {
@@ -93,6 +95,25 @@ impl wax::plugin::host::Host for State {
     }
     fn http_get(&mut self, _url: String) -> Result<String, String> {
         Err("not available yet".into())
+    }
+    fn senders(&mut self, account: String, limit: u32) -> Result<Vec<Sender>, String> {
+        if !self.grants.contains(&Permission::ReadEnvelopes) {
+            return Err("needs read-envelopes".into());
+        }
+        let store = self.store.as_ref().ok_or("the mail cache isn't open yet")?;
+        let stats = store.lock().unwrap().sender_stats(&account, crate::ALL_MAIL, &account, limit.min(5000)).map_err(|e| format!("{e:#}"))?;
+        let rules = crate::rules::load(&account).map(|(r, _)| r).unwrap_or_default();
+        Ok(stats
+            .into_iter()
+            .map(|s| Sender {
+                rule: rules.get(&s.email.to_lowercase()).cloned().or(s.rule),
+                email: s.email,
+                name: s.name,
+                count: s.count,
+                unread: s.unread,
+                latest: s.last_ts,
+            })
+            .collect())
     }
     fn storage_get(&mut self, key: String) -> Option<String> {
         if !self.grants.contains(&Permission::Storage) {
@@ -142,6 +163,8 @@ pub struct Host {
     engine: Engine,
     linker: Linker<State>,
     pub plugins: Vec<Plugin>,
+    /// The mail cache, handed to plugins through `senders`.
+    pub store: Option<crate::SharedStore>,
 }
 
 impl Host {
@@ -152,7 +175,7 @@ impl Host {
         let mut linker: Linker<State> = Linker::new(&engine);
         w(wasmtime_wasi::p2::add_to_linker_sync(&mut linker))?;
         w(Plugin_::add_to_linker::<State, HasSelf<State>>(&mut linker, |s| s))?;
-        Ok(Host { engine, linker, plugins: Vec::new() })
+        Ok(Host { engine, linker, plugins: Vec::new(), store: None })
     }
 
     /// Read every plugin folder. A plugin seen for the first time gets a
@@ -200,6 +223,7 @@ impl Host {
             dir: plugin.dir.clone(),
             grants: plugin.grants.clone(),
             logs: Vec::new(),
+            store: self.store.clone(),
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
@@ -209,38 +233,92 @@ impl Host {
         Ok((out, std::mem::take(&mut store.data_mut().logs)))
     }
 
+    /// Run one export of plugin `i`, collecting what it logged. A plugin
+    /// that traps, loops or runs out of memory is switched off for this run.
+    fn run<T>(&mut self, i: usize, problems: &mut Vec<String>, f: impl FnOnce(&Plugin_, &mut Store<State>) -> wasmtime::Result<T>) -> Option<T> {
+        let p = &self.plugins[i];
+        match self.call(p, f) {
+            Ok((out, logs)) => {
+                for l in logs {
+                    problems.push(format!("{}: {l}", p.name()));
+                }
+                Some(out)
+            }
+            Err(e) => {
+                let why = format!("{e:#}");
+                problems.push(format!("{} stopped and was switched off until Wax restarts: {why}", p.name()));
+                self.plugins[i].broken = Some(why);
+                None
+            }
+        }
+    }
+
+    /// Keep the actions plugin `i` was allowed to take.
+    fn permitted(&self, i: usize, actions: Vec<Action>, problems: &mut Vec<String>) -> Vec<Action> {
+        let p = &self.plugins[i];
+        let (ok, refused): (Vec<Action>, Vec<Action>) = actions.into_iter().partition(|a| allowed(a, &p.grants));
+        if !refused.is_empty() {
+            problems.push(format!("{}: {} action(s) refused (not allowed in Settings → Plugins)", p.name(), refused.len()));
+        }
+        ok
+    }
+
+    fn reads(&self, i: usize) -> bool {
+        let p = &self.plugins[i];
+        p.running() && p.grants.contains(&Permission::ReadEnvelopes)
+    }
+
     /// Ask every running plugin about a new message. Returns (plugin id,
-    /// actions it's allowed to take) and problems to report. A plugin that
-    /// fails is switched off until the next start.
+    /// actions it's allowed to take) and problems to report.
     pub fn arrived(&mut self, message: &Envelope) -> (Vec<(String, Vec<Action>)>, Vec<String>) {
         let mut out = Vec::new();
         let mut problems = Vec::new();
         for i in 0..self.plugins.len() {
-            let p = &self.plugins[i];
-            if !p.running() || !p.grants.contains(&Permission::ReadEnvelopes) {
+            if !self.reads(i) {
                 continue;
             }
-            match self.call(p, |b, s| b.call_on_message_received(s, message)) {
-                Ok((actions, logs)) => {
-                    for l in logs {
-                        problems.push(format!("{}: {l}", p.name()));
-                    }
-                    let (ok, refused): (Vec<Action>, Vec<Action>) = actions.into_iter().partition(|a| allowed(a, &p.grants));
-                    if !refused.is_empty() {
-                        problems.push(format!("{}: {} action(s) refused (not allowed in Settings → Plugins)", p.name(), refused.len()));
-                    }
-                    if !ok.is_empty() {
-                        out.push((p.id.clone(), ok));
-                    }
-                }
-                Err(e) => {
-                    let why = format!("{e:#}");
-                    problems.push(format!("{} stopped and was switched off until Wax restarts: {why}", p.name()));
-                    self.plugins[i].broken = Some(why);
+            if let Some(actions) = self.run(i, &mut problems, |b, s| b.call_on_message_received(s, message)) {
+                let ok = self.permitted(i, actions, &mut problems);
+                if !ok.is_empty() {
+                    out.push((self.plugins[i].id.clone(), ok));
                 }
             }
         }
         (out, problems)
+    }
+
+    /// The first running plugin's sender view (the Sweep), as (plugin id, view).
+    pub fn sender_view(&mut self, account: &str) -> (Option<(String, SenderView)>, Vec<String>) {
+        let mut problems = Vec::new();
+        for i in 0..self.plugins.len() {
+            if !self.reads(i) {
+                continue;
+            }
+            if let Some(Some(view)) = self.run(i, &mut problems, |b, s| b.call_get_sender_view(s, account)) {
+                return (Some((self.plugins[i].id.clone(), view)), problems);
+            }
+        }
+        (None, problems)
+    }
+
+    /// A view key pressed on a sender row of plugin `id`'s view.
+    pub fn sender_key(&mut self, id: &str, account: &str, who: &Sender, key: &str) -> (Vec<Action>, Vec<String>) {
+        let mut problems = Vec::new();
+        let Some(i) = self.plugins.iter().position(|p| p.id == id) else { return (Vec::new(), problems) };
+        if !self.reads(i) {
+            return (Vec::new(), problems);
+        }
+        match self.run(i, &mut problems, |b, s| b.call_on_sender_key(s, account, who, key)) {
+            Some(Ok(actions)) => {
+                let ok = self.permitted(i, actions, &mut problems);
+                (ok, problems)
+            }
+            Some(Err(e)) => {
+                problems.push(format!("{}: {e}", self.plugins[i].name()));
+                (Vec::new(), problems)
+            }
+            None => (Vec::new(), problems),
+        }
     }
 }
 
@@ -284,7 +362,8 @@ pub fn write_grants(dir: &Path, enabled: bool, grants: &[Permission], requested:
 
 #[cfg(test)]
 mod tests {
-    use super::{allowed, write_grants, Action, Address, Envelope, Host, Permission};
+    use super::wax::plugin::types::SenderDecision;
+    use super::{allowed, write_grants, Action, Address, Envelope, Host, Permission, Sender};
     use std::path::{Path, PathBuf};
 
     /// Copy a built test plugin into a scratch plugins folder. Skips (returns
@@ -395,5 +474,46 @@ mod tests {
             let (_, problems) = h.arrived(&mail(subject, "a@b.c"));
             assert!(problems.is_empty());
         }
+    }
+
+    fn sender(email: &str, rule: Option<&str>) -> Sender {
+        Sender { email: email.into(), name: "Shop".into(), count: 40, unread: 30, latest: 0, rule: rule.map(str::to_string) }
+    }
+
+    #[test]
+    fn sweep_plugin_view_and_keys() {
+        let root = scratch("sweep");
+        let g = [Permission::ReadEnvelopes, Permission::ModifyMail];
+        let cfg = "r = \"Reading\"  # newsletters\nn = \"News\"\ni = \"keep\"\n";
+        let Some(()) = install(&root, "sweep", "wax_sweep.wasm", Some(&g), cfg) else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        // No mail cache in the test: the view opens empty and says why.
+        let (view, problems) = h.sender_view("me@example.com");
+        let (id, view) = view.expect("a sender view");
+        assert_eq!(id, "sweep");
+        assert!(view.rows.is_empty());
+        assert!(problems[0].contains("cache"), "{problems:?}");
+        let keys: Vec<(String, String, String)> = view.keys.iter().map(|k| (k.key.clone(), k.label.clone(), k.about.clone())).collect();
+        assert_eq!(keys, [("r".into(), "Reading".into(), "newsletters".into()), ("n".into(), "News".into(), "".into()), ("i".into(), "Keep".into(), "".into())]);
+        let (acts, problems) = h.sender_key("sweep", "me@example.com", &sender("shop@x.com", None), "n");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(acts, vec![Action::FileSender(SenderDecision { email: "shop@x.com".into(), name: "Shop".into(), count: 40, destination: Some("News".into()) })]);
+        let (acts, _) = h.sender_key("sweep", "me@example.com", &sender("shop@x.com", None), "i");
+        assert!(matches!(&acts[..], [Action::FileSender(SenderDecision { destination: None, .. })]));
+        // Same decision again, or a key it doesn't have: nothing.
+        assert!(h.sender_key("sweep", "me@example.com", &sender("shop@x.com", Some("News")), "n").0.is_empty());
+        assert!(h.sender_key("sweep", "me@example.com", &sender("shop@x.com", None), "z").0.is_empty());
+    }
+
+    #[test]
+    fn sweep_needs_modify_mail_to_file() {
+        let root = scratch("sweep-ro");
+        let Some(()) = install(&root, "sweep", "wax_sweep.wasm", Some(&[Permission::ReadEnvelopes]), "") else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        let (acts, problems) = h.sender_key("sweep", "me@example.com", &sender("shop@x.com", None), "r");
+        assert!(acts.is_empty());
+        assert!(problems[0].contains("refused"), "{problems:?}");
     }
 }

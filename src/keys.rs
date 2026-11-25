@@ -46,10 +46,6 @@ actions!(
         CloseSweep,
         SweepNext,
         SweepPrev,
-        FileReading,
-        FileRecords,
-        ScreenOut,
-        KeepSender,
         ToggleStar,
         FormatBold,
         FormatItalic,
@@ -473,10 +469,6 @@ fn defaults() -> (Vec<Def>, Vec<Hint>) {
         .bind("k", SweepPrev, Sweep, None)
         .bind("down", SweepNext, Sweep, None)
         .bind("up", SweepPrev, Sweep, None)
-        .bind("r", FileReading, Sweep, Some(("r", "Reading")))
-        .bind("c", FileRecords, Sweep, Some(("c", "Records")))
-        .bind("x", ScreenOut, Sweep, Some(("x", "screen out")))
-        .bind("i", KeepSender, Sweep, Some(("i", "keep")))
         .bind("escape", CloseSweep, Sweep, Some(("esc", "close")))
         // Right-click menu
         .bind("down", MenuNext, Menu, Some(("↑↓", "choose")))

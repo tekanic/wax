@@ -153,6 +153,14 @@ impl Guest for FilterRules {
     fn panel() -> Option<Panel> {
         None
     }
+
+    fn get_sender_view(_account: String) -> Option<SenderView> {
+        None
+    }
+
+    fn on_sender_key(_account: String, _who: Sender, _key: String) -> Result<Vec<Action>, String> {
+        Ok(Vec::new())
+    }
 }
 
 export!(FilterRules);
