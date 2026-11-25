@@ -56,6 +56,8 @@ fn row_to_envelope(row: &Row) -> rusqlite::Result<Envelope> {
         important: row.get::<_, Option<i64>>(11)?.unwrap_or(0) & 2 != 0,
         attachments: row.get::<_, Option<String>>(12)?.map(|f| crate::model::Attachment::decode(&f)).unwrap_or_default(),
         account: row.get::<_, String>(13)?.into(),
+        to: Vec::new(),
+        labels: Vec::new(),
         // Recompute from the body when cached, so preview fixes apply to old rows.
         preview: match &body {
             Some(b) => make_preview(b).into(),
@@ -740,5 +742,32 @@ impl Store {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+pub mod tests_support {
+    /// A plain cached message for tests.
+    pub fn envelope(mailbox: &str, id: &str, from: &str) -> crate::model::Envelope {
+        crate::model::Envelope {
+            mailbox: mailbox.into(),
+            id: id.into(),
+            message_id: Some(format!("<{id}@x>")),
+            from: "Someone".into(),
+            from_email: from.to_string().into(),
+            subject: "hi".into(),
+            ts: 0,
+            date: "".into(),
+            preview: "".into(),
+            body: None,
+            html: None,
+            unread: true,
+            starred: false,
+            important: false,
+            attachments: Vec::new(),
+            account: Default::default(),
+            to: Vec::new(),
+            labels: Vec::new(),
+        }
     }
 }

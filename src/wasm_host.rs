@@ -478,6 +478,13 @@ mod tests {
         assert_eq!(acts[0].1, vec![Action::Archive]);
         let (acts, _) = h.arrived(&mail("hello", "friend@example.com"));
         assert!(acts.is_empty());
+        // Rules on recipients.
+        let cfg = "to contains \"team@acme.test\" => label \"Team\"\n";
+        std::fs::write(root.join("filter-rules/config.toml"), cfg).unwrap();
+        let to_team = Envelope { to: vec![Address { name: Some("Team".into()), email: "team@acme.test".into() }], ..mail("hello", "x@y.z") };
+        let (acts, _) = h.arrived(&to_team);
+        assert_eq!(acts[0].1, vec![Action::AddLabel("Team".into())]);
+        assert!(h.arrived(&mail("hello", "x@y.z")).0.is_empty());
     }
 
     #[test]
@@ -571,6 +578,8 @@ mod tests {
             important: false,
             attachments: Vec::new(),
             account: Default::default(),
+            to: Vec::new(),
+            labels: Vec::new(),
         }
     }
 

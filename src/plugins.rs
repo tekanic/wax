@@ -166,11 +166,15 @@ fn to_wit(account: &str, e: &Envelope) -> wasm_host::Envelope {
         id: e.id.clone(),
         message_id: e.message_id.clone(),
         from: vec![wasm_host::Address { name, email: e.from_email.to_string() }],
-        to: Vec::new(),
+        to: e
+            .to
+            .iter()
+            .map(|(name, email)| wasm_host::Address { name: (!name.is_empty()).then(|| name.clone()), email: email.clone() })
+            .collect(),
         subject: e.subject.to_string(),
         date: chrono::DateTime::from_timestamp(e.ts, 0).map(|d| d.to_rfc3339()),
         flags,
-        labels: Vec::new(),
+        labels: e.labels.clone(),
     }
 }
 
@@ -351,7 +355,7 @@ impl MailApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{same_side, Act, Arrival, Facts, Plugin, SenderRules};
+    use super::{same_side, to_wit, Act, Arrival, Facts, Plugin, SenderRules};
 
     #[test]
     fn rules_file_inbox_mail() {
@@ -369,5 +373,18 @@ mod tests {
         assert!(same_side("me@gmail.com", &mine));
         assert!(!same_side("stranger@gmail.com", &mine), "gmail.com is not a work domain");
         assert!(!same_side("x@other.com", &mine));
+    }
+
+    #[test]
+    fn plugins_see_recipients_and_labels() {
+        let e = crate::model::Envelope {
+            to: vec![("Me".into(), "me@acme.test".into()), ("".into(), "team@acme.test".into())],
+            labels: vec!["Work".into()],
+            ..crate::store::tests_support::envelope("INBOX", "1", "x@shop.test")
+        };
+        let w = to_wit("me@acme.test", &e);
+        let to: Vec<(Option<String>, String)> = w.to.into_iter().map(|a| (a.name, a.email)).collect();
+        assert_eq!(to, [(Some("Me".into()), "me@acme.test".into()), (None, "team@acme.test".into())]);
+        assert_eq!(w.labels, ["Work"]);
     }
 }

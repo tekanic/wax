@@ -308,7 +308,7 @@ impl Session {
     fn headers_in_range_unstamped_once(&mut self, mailbox: &str, lo: u64, hi: u64) -> Result<Vec<Envelope>> {
         let bytes = self.raw(&[
             format!("EXAMINE {}", imap_quote(mailbox)),
-            format!("UID FETCH {lo}:{hi} (UID FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])"),
+            format!("UID FETCH {lo}:{hi} (UID FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])"),
         ])?;
         Ok(parse_header_fetch(mailbox, &bytes))
     }
@@ -388,7 +388,7 @@ impl Session {
             return Ok(Vec::new());
         }
         let fetched = self.raw(&[format!(
-            "UID FETCH {} (UID FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])",
+            "UID FETCH {} (UID FLAGS X-GM-LABELS BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)])",
             newest.join(",")
         )])?;
         if std::env::var("GPUI_MAIL_DEBUG").is_ok() {
@@ -1123,6 +1123,14 @@ fn parse_header_fetch(mailbox: &str, bytes: &[u8]) -> Vec<Envelope> {
             .unwrap_or_else(|| if from_email.is_empty() { "(unknown sender)".into() } else { from_email.clone() });
         let subject = msg.subject().filter(|s| !s.trim().is_empty()).unwrap_or("(no subject)").to_string();
         let ts = msg.date().map(|d| d.to_timestamp()).unwrap_or(0);
+        let mut to = Vec::new();
+        for list in [msg.to(), msg.cc()].into_iter().flatten() {
+            for a in list.iter() {
+                if let Some(email) = a.address() {
+                    to.push((a.name().unwrap_or("").trim().to_string(), email.to_string()));
+                }
+            }
+        }
         out.push(Envelope {
             mailbox: mailbox.to_string(),
             id: uid,
@@ -1140,6 +1148,8 @@ fn parse_header_fetch(mailbox: &str, bytes: &[u8]) -> Vec<Envelope> {
             important,
             attachments: Vec::new(),
             account: Default::default(),
+            to,
+            labels: parse_gm_labels(&meta),
         });
     }
     out
@@ -1198,6 +1208,8 @@ fn to_model(mailbox: &str, e: io_email::envelope::types::Envelope) -> Envelope {
         important,
         attachments: Vec::new(),
         account: Default::default(),
+        to: Vec::new(),
+        labels: Vec::new(),
     }
 }
 
@@ -1241,7 +1253,7 @@ pub fn check() -> Result<()> {
 
 #[cfg(test)]
 mod label_tests {
-    use super::{is_dropped, parse_gm_labels};
+    use super::{is_dropped, parse_gm_labels, parse_header_fetch};
 
     #[test]
     fn connection_slots_are_capped_and_returned() {
@@ -1279,5 +1291,21 @@ mod label_tests {
         let l = parse_gm_labels(r#"* 3 FETCH (X-GM-LABELS ("\\Important" "\\Inbox" Work "[Notion]" "Clients/Acme \"A\"") UID 812)"#);
         assert_eq!(l, vec!["\\Important", "\\Inbox", "Work", "[Notion]", "Clients/Acme \"A\""]);
         assert!(parse_gm_labels("* 3 FETCH (X-GM-LABELS () UID 1)").is_empty());
+    }
+
+    #[test]
+    fn new_mail_keeps_recipients_and_labels() {
+        let headers = "From: Shop <deals@shop.test>\r\nTo: Me <me@acme.test>, team@acme.test\r\nCc: \"Boss, The\" <boss@acme.test>\r\nSubject: Hi\r\nDate: Tue, 24 Nov 2026 21:13:00 +0000\r\nMessage-ID: <a1@shop.test>\r\n\r\n";
+        let reply = format!(
+            "* 7 FETCH (UID 812 FLAGS (\\Seen) X-GM-LABELS (\"\\\\Important\" Work \"Clients/Acme\") BODY[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID)] {{{}}}\r\n{headers})\r\ngm1 OK done\r\n",
+            headers.len()
+        );
+        let list = parse_header_fetch("INBOX", reply.as_bytes());
+        assert_eq!(list.len(), 1);
+        let e = &list[0];
+        assert_eq!((e.id.as_str(), e.from_email.as_ref(), e.unread), ("812", "deals@shop.test", false));
+        assert_eq!(e.to, [("Me".into(), "me@acme.test".into()), ("".into(), "team@acme.test".into()), ("Boss, The".into(), "boss@acme.test".into())]);
+        assert_eq!(e.labels, ["\\Important", "Work", "Clients/Acme"]);
+        assert!(e.important);
     }
 }

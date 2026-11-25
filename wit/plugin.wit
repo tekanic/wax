@@ -33,11 +33,14 @@ interface types {
         id: string,
         message-id: option<string>,
         %from: list<address>,
+        /// To and Cc recipients.
         to: list<address>,
         subject: string,
         // RFC 3339, UTC.
         date: option<string>,
         %flags: list<string>,
+        /// Gmail labels as the server lists them; system ones start with a
+        /// backslash: \Important, \Inbox.
         labels: list<string>,
     }
 

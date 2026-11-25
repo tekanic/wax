@@ -154,6 +154,11 @@ you learn in storage (`storage-get` and `storage-set`).
 | `on-sender-key` | When you press one of your view's keys on a sender row | `read-envelopes` |
 | `commands`, `run-command`, `panel` | Not called yet; return empty values | — |
 
+The `envelope` a plugin gets has the sender, subject, date and flags, plus
+`to` (To and Cc recipients) and `labels` (Gmail's labels for the message; system
+ones start with a backslash, like `\Important`). Message text isn't included;
+that will come with `read-bodies`.
+
 A message a plugin moves or archives never appears in the Inbox or as a
 notification. The actions themselves then run in the background over IMAP,
 labels and flags first, then the move or archive. Wax waits for every plugin

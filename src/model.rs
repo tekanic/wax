@@ -32,6 +32,12 @@ pub struct Envelope {
     pub attachments: Vec<Attachment>,
     /// The account it belongs to.
     pub account: SharedString,
+    /// To and Cc as (name, address). Filled for newly fetched mail (what
+    /// plugins see), not kept in the cache.
+    pub to: Vec<(String, String)>,
+    /// Gmail labels as the server lists them (system ones start with a
+    /// backslash, e.g. "\\Important"). Newly fetched mail only, like `to`.
+    pub labels: Vec<String>,
 }
 
 impl Envelope {
