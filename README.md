@@ -38,7 +38,10 @@ integrations) will ship as sandboxed WebAssembly plugins.
       recipients too: who you wrote to, the subject or the text.
 - [x] Conversations: reading a message shows every message in its Gmail thread
       (X-GM-THRID), your replies included, above it; click one to read it in place.
-      List rows show the conversation's size beside the name. Sent rows show who
+      The list shows one row per conversation (the newest message, with the
+      thread's size); archive, delete, read/unread and labels act on the whole
+      thread, star on its newest message. Settings → General → Message list
+      switches back to one row per message (`conversations` in settings.toml). Sent rows show who
       the message went to.
 - [x] Read state syncs to Gmail (open = read, `u` toggles), rolled back on failure
 - [x] Older mail: scroll loads the next 200 (cache first, then Gmail); background

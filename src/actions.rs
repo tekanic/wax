@@ -240,13 +240,12 @@ impl MailApp {
 
     /// Read state of the selection (or the current message).
     pub fn toggle_read_targets(&mut self, cx: &mut Context<Self>) {
-        let items = self.targets();
-        let Some(first) = items.first() else { return };
-        let unread = !first.unread;
-        for e in &items {
-            let pos = self.envelopes.iter().position(|x| x.key() == e.key());
-            if let Some(ix) = pos.filter(|&ix| self.envelopes[ix].unread != unread) {
-                self.set_unread(ix, unread, cx);
+        let rows = self.row_targets();
+        let Some(first) = rows.first() else { return };
+        let unread = !self.row_unread(first);
+        for e in self.targets() {
+            if e.unread != unread {
+                self.set_unread_of(e, unread, cx);
             }
         }
     }
@@ -254,7 +253,7 @@ impl MailApp {
     /// Star (`star = true`) or Important on the selection. Instant, no undo
     /// window: pressing the key again is the undo.
     pub fn toggle_flag(&mut self, star: bool, cx: &mut Context<Self>) {
-        let items = self.targets();
+        let items = self.row_targets();
         let Some(first) = items.first() else { return };
         let get = |e: &Envelope| if star { e.starred } else { e.important };
         let on = !get(first);
@@ -357,10 +356,7 @@ impl MailApp {
         };
         let mut hidden = Vec::new();
         if hide {
-            let (gone, kept): (Vec<Envelope>, Vec<Envelope>) =
-                std::mem::take(&mut self.envelopes).into_iter().partition(|x| x.from_email.to_lowercase() == email && x.account == e.account);
-            self.envelopes = kept;
-            hidden = gone;
+            hidden = self.retain_messages(|x| !(x.from_email.to_lowercase() == email && x.account == e.account));
             self.marked.clear();
             self.selected = self.selected.min(self.envelopes.len().saturating_sub(1));
             self.load_body(self.selected, cx);

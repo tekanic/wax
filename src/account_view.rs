@@ -568,11 +568,10 @@ impl MailApp {
                 }
                 match result {
                     Ok(list) => {
+                        let everything = this.all_messages();
                         let mut merged: Vec<Envelope> =
-                            this.envelopes.iter().filter(|e| e.account.as_ref() != account).cloned().collect();
-                        // Keep bodies already loaded for this account's rows.
-                        let loaded: std::collections::HashMap<(String, String), Envelope> = this
-                            .envelopes
+                            everything.iter().filter(|e| e.account.as_ref() != account).cloned().collect();
+                        let loaded: std::collections::HashMap<(String, String), Envelope> = everything
                             .iter()
                             .filter(|e| e.account.as_ref() == account && e.body.is_some())
                             .map(|e| (e.key(), e.clone()))

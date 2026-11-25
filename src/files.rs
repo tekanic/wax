@@ -144,6 +144,7 @@ pub fn load_settings() -> Option<crate::settings::Settings> {
         blocks_open: flag("blocks_open", d.blocks_open),
         sig_new: id("signature_for_new"),
         sig_reply: id("signature_for_replies"),
+        conversations: flag("conversations", d.conversations),
     })
 }
 
@@ -157,12 +158,15 @@ pub fn save_settings(s: &crate::settings::Settings) -> Result<()> {
          blocks_open = {}\n\
          # Signature ids (see signatures/*/signature.toml); 0 = none.\n\
          signature_for_new = {}\n\
-         signature_for_replies = {}\n",
+         signature_for_replies = {}\n\
+         # One row per conversation in the message list.\n\
+         conversations = {}\n",
         s.mono,
         s.hide_list_when_writing,
         s.blocks_open,
         id(s.sig_new),
         id(s.sig_reply),
+        s.conversations,
     );
     write_atomic(&settings_file(), text.as_bytes())
 }

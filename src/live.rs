@@ -179,18 +179,15 @@ impl MailApp {
                 || (!self.unified && active && self.active().is_some_and(|m| m.name.eq_ignore_ascii_case(mail::INBOX))));
         if in_inbox {
             let keep = self.envelopes.get(self.selected).map(|e| e.key());
-            let have: HashSet<(String, String)> = self.envelopes.iter().map(|e| e.key()).collect();
+            let have: HashSet<(String, String)> = self.all_messages().iter().map(|e| e.key()).collect();
             let mut fresh: Vec<Envelope> =
                 kept.iter().filter(|e| !have.contains(&e.key())).cloned().collect();
             if !fresh.is_empty() {
                 fresh.append(&mut self.envelopes);
-                fresh.sort_by(|a, b| b.ts.cmp(&a.ts));
                 self.envelopes = fresh;
-                // The message you're reading stays selected.
-                if let Some(k) = keep {
-                    if let Some(ix) = self.envelopes.iter().position(|e| e.key() == k) {
-                        self.selected = ix;
-                    }
+                self.group_threads();
+                if let Some(ix) = keep.and_then(|k| self.row_of(&k)) {
+                    self.selected = ix;
                 }
             }
         }

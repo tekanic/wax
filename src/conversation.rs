@@ -87,8 +87,8 @@ impl MailApp {
 
     /// How many messages the row's conversation has (when more than one).
     pub fn row_thread_count(&self, e: &Envelope) -> Option<usize> {
-        let thread = e.thread.clone()?;
-        let n = *self.thread_counts.get(&(self.account_of(e).to_string(), thread))?;
+        let cached = e.thread.clone().and_then(|t| self.thread_counts.get(&(self.account_of(e).to_string(), t)).copied()).unwrap_or(0);
+        let n = cached.max(self.row_size(e));
         (n > 1).then_some(n)
     }
 

@@ -39,6 +39,7 @@ mod settings;
 mod signature;
 mod sweep;
 mod table;
+mod threads;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -304,6 +305,7 @@ struct MailApp {
     unified_box: &'static str,
     /// The conversation of the message being read (conversation.rs).
     conversation: Option<conversation::Conversation>,
+    hidden: std::collections::HashMap<(String, String), Vec<Envelope>>,
     /// Messages per conversation for the rows on screen, by (account, thread).
     thread_counts: std::collections::HashMap<(String, String), usize>,
     /// The status text as last drawn, and when it appeared (so it fades).
@@ -434,6 +436,7 @@ impl MailApp {
             unified_box: mail::INBOX,
             conversation: None,
             thread_counts: Default::default(),
+            hidden: Default::default(),
             label_picker: None,
             labels_pane: None,
             status_seen: SharedString::default(),
@@ -713,12 +716,12 @@ impl MailApp {
             .map(|e| e.key());
         self.has_more = self.query.is_empty() && envelopes.len() >= PAGE_SIZE as usize;
         self.loading_more = false;
+        self.hidden.clear();
         self.envelopes = envelopes;
+        self.group_threads();
         self.prefetching.clear();
         self.loading = false;
-        self.selected = keep
-            .and_then(|k| self.envelopes.iter().position(|e| e.key() == k))
-            .unwrap_or(0);
+        self.selected = keep.and_then(|k| self.row_of(&k)).unwrap_or(0);
         self.scroll.scroll_to_item(self.selected, ScrollStrategy::Top);
         self.load_body(self.selected, cx);
         self.refresh_thread_counts();
@@ -848,8 +851,8 @@ impl MailApp {
 
     fn merge_results(&mut self, hits: Vec<Envelope>, cx: &mut Context<Self>) {
         let key = |e: &Envelope| e.message_id.clone().unwrap_or_else(|| format!("{}/{}", e.mailbox, e.id));
-        let mut seen: HashSet<String> = self.envelopes.iter().map(key).collect();
-        let mut merged = self.envelopes.clone();
+        let mut merged = self.all_messages();
+        let mut seen: HashSet<String> = merged.iter().map(key).collect();
         for hit in hits {
             if seen.insert(key(&hit)) {
                 merged.push(hit);
@@ -1766,7 +1769,7 @@ impl MailApp {
         cx.notify();
     }
 
-    fn targets(&self) -> Vec<Envelope> {
+    fn row_targets(&self) -> Vec<Envelope> {
         if self.marked.is_empty() {
             self.envelopes.get(self.selected).cloned().into_iter().collect()
         } else {
@@ -1776,6 +1779,10 @@ impl MailApp {
                 .cloned()
                 .collect()
         }
+    }
+
+    fn targets(&self) -> Vec<Envelope> {
+        self.row_targets().iter().flat_map(|e| self.members(e)).collect()
     }
 
     fn bulk(&mut self, kind: BulkKind, cx: &mut Context<Self>) {
@@ -1817,7 +1824,7 @@ impl MailApp {
             .iter()
             .position(|e| keys.contains(&e.key()))
             .unwrap_or(self.selected);
-        self.envelopes.retain(|e| !keys.contains(&e.key()));
+        self.retain_messages(|e| !keys.contains(&e.key()));
         self.marked.clear();
         // Keep the cursor near where the removed rows were.
         self.selected = match selected_key.filter(|k| !keys.contains(k)) {
@@ -1923,9 +1930,9 @@ impl MailApp {
         let back: Vec<Envelope> = items.into_iter().filter(|e| visible(e)).collect();
         let current = self.envelopes.get(self.selected).map(|e| e.key());
         self.envelopes.extend(back);
-        self.envelopes.sort_by(|a, b| b.ts.cmp(&a.ts));
+        self.group_threads();
         if let Some(k) = current {
-            self.selected = self.envelopes.iter().position(|e| e.key() == k).unwrap_or(0);
+            self.selected = self.row_of(&k).unwrap_or(0);
         }
         cx.notify();
     }
@@ -2215,6 +2222,7 @@ impl MailApp {
         if self.envelopes[ix].unread {
             self.set_unread(ix, false, cx);
         }
+        self.mark_thread_read(ix, cx);
         self.scroll.scroll_to_item(ix, ScrollStrategy::Center);
         self.load_body(ix, cx);
         self.load_conversation(cx);
@@ -2275,13 +2283,16 @@ impl MailApp {
                 match result {
                     Ok((older, more)) => {
                         let have: HashSet<(String, String)> =
-                            this.envelopes.iter().map(|e| e.key()).collect();
+                            this.all_messages().iter().map(|e| e.key()).collect();
                         let added: Vec<Envelope> = older
                             .into_iter()
                             .filter(|e| !have.contains(&e.key()))
                             .collect();
                         this.has_more = more && !added.is_empty();
+                        let keep = this.envelopes.get(this.selected).map(|e| e.key());
                         this.envelopes.extend(added);
+                        this.group_threads();
+                        this.selected = keep.and_then(|k| this.row_of(&k)).unwrap_or(this.selected);
                     }
                     Err(err) => {
                         this.has_more = false;
@@ -2431,8 +2442,12 @@ impl MailApp {
     /// Change read state locally (every copy in the list), in the cache and
     /// on the server; roll back if the server refuses.
     fn set_unread(&mut self, ix: usize, unread: bool, cx: &mut Context<Self>) {
-        let Some(e) = self.envelopes.get(ix) else { return };
-        let acct = self.account_of(e);
+        let Some(e) = self.envelopes.get(ix).cloned() else { return };
+        self.set_unread_of(e, unread, cx);
+    }
+
+    fn set_unread_of(&mut self, e: Envelope, unread: bool, cx: &mut Context<Self>) {
+        let acct = self.account_of(&e);
         let (mailbox, id, message_id) = (e.mailbox.clone(), e.id.clone(), e.message_id.clone());
         self.apply_unread(&acct, &mailbox, &id, message_id.as_deref(), unread);
         cx.notify();
@@ -2469,7 +2484,7 @@ impl MailApp {
     fn apply_unread(&mut self, account: &str, mailbox: &str, id: &str, message_id: Option<&str>, unread: bool) {
         let here = self.account.clone();
         let mut flipped: Vec<String> = Vec::new();
-        for e in self.envelopes.iter_mut() {
+        for e in self.envelopes.iter_mut().chain(self.hidden.values_mut().flatten()) {
             let mine = if e.account.is_empty() { *here == *account } else { e.account.as_ref() == account };
             let same = e.is(account, mailbox, id)
                 || (mine && message_id.is_some() && e.message_id.as_deref() == message_id);
@@ -2876,6 +2891,7 @@ impl MailApp {
         range
             .map(|ix| {
                 let e = &self.envelopes[ix];
+                let unread = self.row_unread(e);
                 let selected = ix == self.selected;
                 let marked = self.marked.contains(&e.key());
                 let row = div()
@@ -2924,7 +2940,7 @@ impl MailApp {
                                         .child("✓"),
                                 )
                             })
-                            .when(e.unread && !marked, |d| d.child(div().size(px(7.)).rounded_full().bg(rgb(ACCENT)))),
+                            .when(unread && !marked, |d| d.child(div().size(px(7.)).rounded_full().bg(rgb(ACCENT)))),
                     )
                     .child(
                         div()
@@ -2952,7 +2968,7 @@ impl MailApp {
                                                 div()
                                                     .min_w_0()
                                                     .truncate()
-                                                    .font_weight(if e.unread { FontWeight::BOLD } else { FontWeight::MEDIUM })
+                                                    .font_weight(if unread { FontWeight::BOLD } else { FontWeight::MEDIUM })
                                                     .child(self.row_title(e)),
                                             )
                                             .children(self.row_thread_count(e).map(|n| {
@@ -2990,8 +3006,8 @@ impl MailApp {
                                     .flex_none()
                                     .h(px(20.))
                                     .truncate()
-                                    .text_color(rgb(if e.unread { TEXT } else { SUBTLE }))
-                                    .when(e.unread, |d| d.font_weight(FontWeight::MEDIUM))
+                                    .text_color(rgb(if unread { TEXT } else { SUBTLE }))
+                                    .when(unread, |d| d.font_weight(FontWeight::MEDIUM))
                                     .child(e.subject.clone()),
                             )
                             .child(

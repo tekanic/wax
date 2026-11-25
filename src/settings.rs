@@ -17,11 +17,13 @@ pub struct Settings {
     pub sig_new: Option<i64>,
     /// Signature for replies.
     pub sig_reply: Option<i64>,
+    /// The list shows one row per conversation.
+    pub conversations: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { mono: true, hide_list_when_writing: true, blocks_open: false, sig_new: None, sig_reply: None }
+        Settings { mono: true, hide_list_when_writing: true, blocks_open: false, sig_new: None, sig_reply: None, conversations: true }
     }
 }
 
@@ -42,6 +44,7 @@ impl Settings {
             blocks_open: d.blocks_open,
             sig_new: id("signature.new"),
             sig_reply: id("signature.reply"),
+            conversations: d.conversations,
         }
     }
 
@@ -211,7 +214,7 @@ impl MailApp {
         sig.filter(|id| self.signatures.iter().any(|s| s.id == *id && s.account.eq_ignore_ascii_case(&account)))
     }
 
-    fn save_settings(&mut self, cx: &mut Context<Self>) {
+    pub fn save_settings(&mut self, cx: &mut Context<Self>) {
         // Default signatures belong to the open account.
         self.save_account_signatures();
         if let Err(e) = self.settings.save() {
@@ -693,6 +696,11 @@ impl MailApp {
                 this.settings.hide_list_when_writing = false;
                 this.save_settings(cx)
             })));
+        let threads = div()
+            .flex()
+            .gap_1p5()
+            .child(choice("conv-on", "Conversations", s.conversations).on_click(cx.listener(|this, _, _, cx| this.set_conversations(true, cx))))
+            .child(choice("conv-off", "Messages", !s.conversations).on_click(cx.listener(|this, _, _, cx| this.set_conversations(false, cx))));
         let files_buttons = div()
             .flex()
             .gap_1p5()
@@ -721,6 +729,11 @@ impl MailApp {
                     .flex_col()
                     .child(setting_row("Font", "Used while writing and in the message you send. Each message can switch.", font))
                     .child(setting_row("Message list while writing", "Hiding it gives the message more room.", hide))
+                    .child(setting_row(
+                        "Message list",
+                        "Conversations shows one row per thread, newest first; archive, delete, read and labels act on the whole thread. Messages shows every message on its own row.",
+                        threads,
+                    ))
                     .child(setting_row("Open at login", "Starts Wax when you sign in to your Mac.", login))
                     .child(setting_row(
                         "Settings files",

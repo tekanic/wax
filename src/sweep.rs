@@ -388,7 +388,7 @@ impl MailApp {
                         this.refresh_folders(cx);
                         // The Inbox view no longer holds their mail.
                         let (gone, here) = (p.email.clone(), this.account.to_string());
-                        this.envelopes.retain(|e| {
+                        this.retain_messages(|e| {
                             let same_account = if e.account.is_empty() { here == p.account } else { e.account.as_ref() == p.account };
                             !(same_account && e.mailbox.eq_ignore_ascii_case(INBOX) && e.from_email.to_lowercase() == gone)
                         });
