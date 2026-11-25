@@ -16,7 +16,8 @@ pub const READING: &str = "Reading";
 pub const RECORDS: &str = "Records";
 pub const SCREENED: &str = "Screened Out";
 pub const KEEP: &str = "keep";
-/// Where the Screener holds a first email from someone new.
+/// Where the Screener plugin holds a first email from someone new. The
+/// core keeps the Lobby: deciding about a sender empties theirs.
 pub const LOBBY: &str = "Lobby";
 const INBOX: &str = mail::INBOX;
 
@@ -40,17 +41,6 @@ pub fn apply_sender(session: &SharedSession, store: &SharedStore, acct: &str, em
     }
     store.lock().unwrap().remove_inbox_from(acct, email)?;
     Ok(all.len().max(inbox.len()))
-}
-
-/// Screener: move a new sender's Inbox mail to the Lobby to wait for a
-/// decision. No rule is written; deciding writes one.
-pub fn hold_in_lobby(session: &SharedSession, store: &SharedStore, acct: &str, email: &str) -> anyhow::Result<usize> {
-    session.lock().unwrap().ensure_mailbox(LOBBY)?;
-    let ids = session.lock().unwrap().uids_from(INBOX, email)?;
-    session.lock().unwrap().copy_ids(INBOX, LOBBY, &ids)?;
-    session.lock().unwrap().move_ids(INBOX, ALL_MAIL, &ids)?;
-    store.lock().unwrap().remove_inbox_from(acct, email)?;
-    Ok(ids.len())
 }
 
 /// A decision about a sender empties their Lobby: back to the Inbox for

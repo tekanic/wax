@@ -1,0 +1,21 @@
+[package]
+name = "wax-screener"
+version = "0.1.0"
+edition = "2021"
+description = "Wax plugin: a first email from someone new waits in the Lobby until you decide"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+# Built on its own (scripts/build-plugins.sh), not part of the app's build.
+[workspace]

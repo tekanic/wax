@@ -5,6 +5,11 @@
 #   scripts/build-plugins.sh filter-rules
 set -e
 cd "$(dirname "$0")/.."
+# Homebrew's Rust can shadow rustup's, which has the wasm32-wasip2 target.
+for t in "$HOME"/.rustup/toolchains/stable-*/bin; do
+  [ -x "$t/cargo" ] && PATH="$t:$PATH" && export PATH
+  break
+done
 rustup target add wasm32-wasip2 >/dev/null 2>&1 || true
 dest="${WAX_CONFIG_DIR:-$HOME/.config/wax}/plugins"
 names="$*"

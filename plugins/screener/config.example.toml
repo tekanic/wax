@@ -1,0 +1,9 @@
+# The Screener: a first email from someone new waits in the Lobby until you
+# decide. In the Lobby, e lets them in and b screens them out.
+#
+# People you've written to, colleagues at your work domain, senders you've
+# already decided about and anyone you've had mail from come straight
+# through. Mail more than 3 days old is never held.
+#
+# One line per account to screen:
+# screen = "you@example.com"

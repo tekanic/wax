@@ -69,8 +69,19 @@ struct State {
     dir: PathBuf,
     grants: Vec<Permission>,
     logs: Vec<String>,
-    /// The mail cache, for `senders`.
+    /// The mail cache, for `senders` and `knows-sender`.
     store: Option<crate::SharedStore>,
+    arrival: Arrival,
+}
+
+/// What `knows-sender` needs about the batch of new mail being handled.
+#[derive(Clone, Default)]
+pub struct Arrival {
+    /// Your addresses for the account: its own and its From identities.
+    pub mine: Vec<String>,
+    /// (mailbox, id) of every message in the batch, and their Message-IDs.
+    pub batch: Vec<(String, String)>,
+    pub batch_mids: Vec<String>,
 }
 
 impl WasiView for State {
@@ -114,6 +125,27 @@ impl wax::plugin::host::Host for State {
                 latest: s.last_ts,
             })
             .collect())
+    }
+    fn knows_sender(&mut self, message: Envelope) -> bool {
+        if !self.grants.contains(&Permission::ReadEnvelopes) {
+            return false;
+        }
+        let account = message.account.clone();
+        let Some(email) = message.from.first().map(|a| a.email.to_lowercase()) else { return false };
+        if crate::plugins::same_side(&email, &self.arrival.mine) {
+            return true;
+        }
+        if crate::rules::load(&account).is_some_and(|(r, _)| r.contains_key(&email)) {
+            return true;
+        }
+        let Some(store) = &self.store else { return false };
+        // Outside a batch (a test, a command), leave this message out.
+        let mut batch = self.arrival.batch.clone();
+        if batch.is_empty() {
+            batch.push((message.mailbox.clone(), message.id.clone()));
+        }
+        let mids = if self.arrival.batch.is_empty() { message.message_id.into_iter().collect() } else { self.arrival.batch_mids.clone() };
+        store.lock().unwrap().sender_known(&account, &email, &batch, &mids)
     }
     fn storage_get(&mut self, key: String) -> Option<String> {
         if !self.grants.contains(&Permission::Storage) {
@@ -165,6 +197,8 @@ pub struct Host {
     pub plugins: Vec<Plugin>,
     /// The mail cache, handed to plugins through `senders`.
     pub store: Option<crate::SharedStore>,
+    /// Set by the caller for each batch of new mail.
+    pub arrival: Arrival,
 }
 
 impl Host {
@@ -175,7 +209,7 @@ impl Host {
         let mut linker: Linker<State> = Linker::new(&engine);
         w(wasmtime_wasi::p2::add_to_linker_sync(&mut linker))?;
         w(Plugin_::add_to_linker::<State, HasSelf<State>>(&mut linker, |s| s))?;
-        Ok(Host { engine, linker, plugins: Vec::new(), store: None })
+        Ok(Host { engine, linker, plugins: Vec::new(), store: None, arrival: Arrival::default() })
     }
 
     /// Read every plugin folder. A plugin seen for the first time gets a
@@ -224,6 +258,7 @@ impl Host {
             grants: plugin.grants.clone(),
             logs: Vec::new(),
             store: self.store.clone(),
+            arrival: self.arrival.clone(),
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
@@ -515,5 +550,76 @@ mod tests {
         let (acts, problems) = h.sender_key("sweep", "me@example.com", &sender("shop@x.com", None), "r");
         assert!(acts.is_empty());
         assert!(problems[0].contains("refused"), "{problems:?}");
+    }
+
+    /// A cached message, as the app keeps them.
+    fn cached(mailbox: &str, id: &str, from: &str, ts: i64) -> crate::model::Envelope {
+        crate::model::Envelope {
+            mailbox: mailbox.into(),
+            id: id.into(),
+            message_id: Some(format!("<{id}@x>")),
+            from: "Someone".into(),
+            from_email: from.to_string().into(),
+            subject: "hi".into(),
+            ts,
+            date: "".into(),
+            preview: "".into(),
+            body: None,
+            html: None,
+            unread: true,
+            starred: false,
+            important: false,
+            attachments: Vec::new(),
+            account: Default::default(),
+        }
+    }
+
+    #[test]
+    fn screener_holds_strangers_only() {
+        let root = scratch("screener");
+        let g = [Permission::ReadEnvelopes, Permission::ModifyMail, Permission::Storage];
+        let Some(()) = install(&root, "screener", "wax_screener.wasm", Some(&g), "screen = \"me@acme.test\"\n") else { return };
+        let me = "me@acme.test";
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let store = crate::store::Store::open_at(&root.join("cache.sqlite")).unwrap();
+        // Old mail from a friend, someone you wrote to, and today's batch.
+        let batch = vec![
+            cached("INBOX", "10", "new@shop.test", now),
+            cached("INBOX", "11", "new@shop.test", now),
+            cached("INBOX", "12", "friend@else.test", now),
+            cached("INBOX", "13", "pen.pal@else.test", now),
+            cached("INBOX", "14", "boss@acme.test", now),
+            cached("INBOX", "15", "late@shop.test", now - 5 * 86400),
+        ];
+        let mut all = batch.clone();
+        all.push(cached("[Gmail]/All Mail", "1", "friend@else.test", now - 86400 * 30));
+        store.upsert_envelopes_ref(me, &all).unwrap();
+        store.add_sent_contacts(me, &[("Pal".into(), "pen.pal@else.test".into(), now)]).unwrap();
+        let mut h = Host::new().unwrap();
+        h.store = Some(std::sync::Arc::new(std::sync::Mutex::new(store)));
+        h.load_from(&root);
+        assert!(h.plugins[0].running(), "{:?}", h.plugins[0].broken);
+        h.arrival = super::Arrival {
+            mine: vec![me.into()],
+            batch: batch.iter().map(|e| (e.mailbox.clone(), e.id.clone())).collect(),
+            batch_mids: batch.iter().filter_map(|e| e.message_id.clone()).collect(),
+        };
+        let held = |h: &mut Host, e: &crate::model::Envelope| {
+            let date = chrono::DateTime::from_timestamp(e.ts, 0).map(|d| d.to_rfc3339());
+            let m = Envelope { date, ..mail(&e.subject, &e.from_email) };
+            let m = Envelope { account: me.into(), id: e.id.clone(), message_id: e.message_id.clone(), ..m };
+            let (acts, problems) = h.arrived(&m);
+            assert!(problems.is_empty(), "{problems:?}");
+            acts.iter().any(|(_, a)| a.contains(&Action::MoveTo("Lobby".into())))
+        };
+        assert!(held(&mut h, &batch[0]), "a stranger");
+        assert!(held(&mut h, &batch[1]), "the stranger's second message doesn't vouch for the first");
+        assert!(!held(&mut h, &batch[2]), "you have older mail from them");
+        assert!(!held(&mut h, &batch[3]), "you've written to them");
+        assert!(!held(&mut h, &batch[4]), "a colleague");
+        assert!(!held(&mut h, &batch[5]), "more than 3 days old");
+        // Another account isn't screened.
+        let other = Envelope { account: "other@x.test".into(), ..mail("hi", "new@shop.test") };
+        assert!(h.arrived(&other).0.is_empty());
     }
 }

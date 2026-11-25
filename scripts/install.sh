@@ -4,6 +4,11 @@
 # Quits a running Wax first and opens the new one afterwards.
 set -e
 cd "$(dirname "$0")/.."
+# Homebrew's Rust can shadow rustup's, which has the wasm32-wasip2 target.
+for t in "$HOME"/.rustup/toolchains/stable-*/bin; do
+  [ -x "$t/cargo" ] && PATH="$t:$PATH" && export PATH
+  break
+done
 scripts/build-plugins.sh
 cargo build --release
 scripts/bundle.sh release

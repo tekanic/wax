@@ -43,8 +43,6 @@ pub struct Account {
     pub color: Option<u32>,
     /// Badge text (1–2 characters); empty = the first letter of its name.
     pub badge: String,
-    /// Screener: hold a first email from someone new in the Lobby.
-    pub screener: bool,
 }
 
 /// At most two characters (an emoji counts as one), no spaces.
@@ -80,7 +78,6 @@ impl Account {
             sig_reply: None,
             color: None,
             badge: String::new(),
-            screener: false,
         }
     }
 
@@ -134,7 +131,6 @@ fn read(path: &std::path::Path) -> Option<Account> {
         sig_reply: id("signature_for_replies"),
         color: m.get("color").and_then(|c| u32::from_str_radix(c.trim().trim_start_matches('#'), 16).ok()),
         badge: m.get("badge").map(|b| clean_badge(b)).unwrap_or_default(),
-        screener: m.get("screener").is_some_and(|v| v == "true"),
     })
 }
 
@@ -172,9 +168,7 @@ pub fn save(a: &Account) -> Result<()> {
          signature_for_replies = {}\n\
          # Badge colour, \"#rrggbb\", and text (1-2 characters); empty = automatic.\n\
          color = {}\n\
-         badge = {}\n\
-         # Screener: a first email from someone new waits in the Lobby.\n\
-         screener = {}\n",
+         badge = {}\n",
         quote(&a.email),
         quote(&a.name),
         quote(a.auth.as_str()),
@@ -183,7 +177,6 @@ pub fn save(a: &Account) -> Result<()> {
         sig(a.sig_reply),
         quote(&a.color.map(|c| format!("#{c:06x}")).unwrap_or_default()),
         quote(&a.badge),
-        a.screener
     );
     let path = a.dir().join("account.toml");
     let tmp = path.with_extension("tmp");
@@ -230,7 +223,6 @@ pub fn migrate(settings: &crate::settings::Settings, cached: &[String]) {
             sig_reply: if order == 1 { settings.sig_reply } else { None },
             color: None,
             badge: String::new(),
-            screener: false,
         };
         if save(&a).is_ok() && order == 1 {
             let old_rules = data_dir().join("rules.toml");
@@ -271,7 +263,7 @@ mod tests {
 
     #[test]
     fn short_names() {
-        let a = |e: &str| Account { email: e.into(), name: String::new(), auth: Auth::Google, order: 0, sig_new: None, sig_reply: None, color: None, badge: String::new(), screener: false };
+        let a = |e: &str| Account { email: e.into(), name: String::new(), auth: Auth::Google, order: 0, sig_new: None, sig_reply: None, color: None, badge: String::new() };
         assert_eq!(a("alex.doe@gmail.com").short(), "alex.doe");
         assert_eq!(a("alex@example.com").short(), "example.com");
         assert_eq!(a("alex.doe@gmail.com").tag(), "gmail");

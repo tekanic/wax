@@ -68,7 +68,11 @@ fn row_to_envelope(row: &Row) -> rusqlite::Result<Envelope> {
 
 impl Store {
     pub fn open() -> Result<Self> {
-        let path = default_path();
+        Self::open_at(&default_path())
+    }
+
+    /// A cache at `path` (tests use a scratch file).
+    pub fn open_at(path: &std::path::Path) -> Result<Self> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -612,7 +616,13 @@ impl Store {
 
     /// The Screener's question: is there other mail from this sender (outside
     /// the Lobby, Spam and Trash), or have you written to them?
-    pub fn sender_known(&self, account: &str, email: &str, mailbox: &str, id: &str, message_id: Option<&str>) -> bool {
+    /// Whether you know `email`: you've written to them, or there's other
+    /// mail from them in the cache (not the Lobby, Spam or Trash, and not
+    /// the messages in `batch` = (mailbox, id), nor copies of them by
+    /// Message-ID). New mail is in the cache before plugins see it, so the
+    /// batch has to be left out or a stranger's second message would vouch
+    /// for their first.
+    pub fn sender_known(&self, account: &str, email: &str, batch: &[(String, String)], batch_mids: &[String]) -> bool {
         let wrote: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM sent_contacts WHERE account = ?1 AND email = ?2", params![account, email], |r| r.get(0))
@@ -620,18 +630,29 @@ impl Store {
         if wrote > 0 {
             return true;
         }
-        let seen: i64 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM envelopes WHERE account = ?1 AND lower(from_email) = ?2
-                   AND mailbox NOT IN ('Lobby', '[Gmail]/Spam', '[Gmail]/Trash')
-                   AND NOT (mailbox = ?3 AND id = ?4)
-                   AND (?5 IS NULL OR message_id IS NULL OR message_id != ?5)",
-                params![account, email, mailbox, id, message_id],
-                |r| r.get(0),
-            )
-            .unwrap_or(0);
-        seen > 0
+        let Ok(mut stmt) = self.conn.prepare(
+            "SELECT mailbox, id, message_id FROM envelopes WHERE account = ?1 AND lower(from_email) = ?2
+               AND mailbox NOT IN ('Lobby', '[Gmail]/Spam', '[Gmail]/Trash') LIMIT 500",
+        ) else {
+            return false;
+        };
+        let rows: Vec<(String, String, Option<String>)> = match stmt
+            .query_map(params![account, email], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)))
+        {
+            Ok(rows) => rows.flatten().collect(),
+            Err(_) => return false,
+        };
+        rows.into_iter().any(|(mailbox, id, mid)| {
+            let in_batch = batch.iter().any(|(m, i)| *i == id && m.eq_ignore_ascii_case(&mailbox));
+            let copy = mid.is_some_and(|mid| batch_mids.contains(&mid));
+            !in_batch && !copy
+        })
+    }
+
+    /// Forget one cached message (it was moved out of `mailbox`).
+    pub fn remove_envelope(&self, account: &str, mailbox: &str, id: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM envelopes WHERE account = ?1 AND mailbox = ?2 AND id = ?3", params![account, mailbox, id])?;
+        Ok(())
     }
 
     /// Forget cached Inbox copies from a sender (after filing them).

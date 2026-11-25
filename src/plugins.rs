@@ -1,12 +1,14 @@
 //! The one path new mail takes before you see it.
 //!
-//! Every message that arrives becomes an `Arrival`. The core works out the
-//! facts plugins may rely on (the sender's rule, whether you know them) and
-//! asks each plugin in turn; the first to answer decides. Plugins never
-//! touch Gmail: they return an `Act`, and `dispatch_arrivals` carries it out
-//! the same way for all of them. These built-in plugins are written
-//! against the same shape the sandboxed ones will get (wit/plugin.wit), so
-//! moving them out later changes where they run, not what they say.
+//! 1. Sender rules (built in) file mail from senders you've decided about.
+//! 2. The WebAssembly plugins (the Screener, Filter rules…) see each new
+//!    Inbox message that's left, in the background. Whatever they move or
+//!    archive never appears in the Inbox or as a notification.
+//! 3. What's left is shown and announced (live.rs `show_arrivals`), and the
+//!    plugins' actions are carried out over IMAP.
+//!
+//! Plugins never touch Gmail themselves: they return actions and the core
+//! carries them out.
 
 use super::*;
 use std::collections::{BTreeMap, HashMap};
@@ -25,12 +27,6 @@ pub struct Arrival<'a> {
 pub struct Facts<'a> {
     /// The sender's rule: "keep", "Reading", "Screened Out"…
     pub rule: Option<&'a str>,
-    /// You have mail from them already, have written to them, they share
-    /// your work domain, or it's one of your own addresses.
-    pub known: bool,
-    /// The Screener is on for this account, since this time.
-    pub screener: bool,
-    pub screener_since: i64,
 }
 
 /// What a plugin wants done with the message.
@@ -48,6 +44,8 @@ pub trait Plugin {
 }
 
 /// Sender rules (rules.toml): file new Inbox mail where its sender belongs.
+/// Built in because the Sweep, the Screener's Lobby and block/allow in the
+/// message list all write these rules.
 pub struct SenderRules;
 
 impl Plugin for SenderRules {
@@ -60,30 +58,8 @@ impl Plugin for SenderRules {
     }
 }
 
-/// Screener: a first email from someone new waits in the Lobby until you
-/// decide (e lets them in, b screens them out).
-pub struct Screener;
-
-/// Mail older than this when it arrives is never held: it isn't "new".
-const SCREEN_RECENT_SECS: i64 = 3 * 24 * 3600;
-
-impl Plugin for Screener {
-    fn name(&self) -> &'static str {
-        "screener"
-    }
-    fn arrived(&self, msg: &Arrival, facts: &Facts) -> Option<Act> {
-        let fresh = msg.ts >= facts.screener_since && msg.ts >= chrono::Utc::now().timestamp() - SCREEN_RECENT_SECS;
-        let hold = facts.screener
-            && fresh
-            && facts.rule.is_none()
-            && !facts.known
-            && msg.mailbox.eq_ignore_ascii_case(mail::INBOX);
-        hold.then(|| Act::File(sweep::LOBBY.to_string()))
-    }
-}
-
 pub fn builtins() -> Vec<Box<dyn Plugin>> {
-    vec![Box::new(SenderRules), Box::new(Screener)]
+    vec![Box::new(SenderRules)]
 }
 
 /// The part of "do you know them" that needs no database: one of your own
@@ -109,12 +85,8 @@ impl MailApp {
             self.refresh_rules();
         }
         let rules: HashMap<String, String> = if active { self.rules.clone() } else { rules::load(account).map(|(r, _)| r).unwrap_or_default() };
-        let mine: Vec<String> = std::iter::once(account.to_string()).chain(self.identities_for(account).into_iter().map(|i| i.email)).collect();
         let plugins = builtins();
-        let screener = self.accounts.iter().any(|a| a.email.eq_ignore_ascii_case(account) && a.screener);
-        let screener_since = self.settings.screener_since;
         let mut to_file: BTreeMap<String, String> = BTreeMap::new();
-        let mut held = 0;
         let kept: Vec<Envelope> = list
             .into_iter()
             .filter(|e| {
@@ -126,15 +98,10 @@ impl MailApp {
                     // Same sender twice in one batch: same answer.
                     return !e.mailbox.eq_ignore_ascii_case(mail::INBOX) || dest.is_empty();
                 }
-                let known = same_side(&email, &mine)
-                    || self.store.as_ref().is_some_and(|s| s.lock().unwrap().sender_known(account, &email, &e.mailbox, &e.id, e.message_id.as_deref()));
-                let facts = Facts { rule: rules.get(&email).map(String::as_str), known, screener, screener_since };
+                let facts = Facts { rule: rules.get(&email).map(String::as_str) };
                 let msg = Arrival { account, email: &email, mailbox: &e.mailbox, ts: e.ts };
                 match plugins.iter().find_map(|p| p.arrived(&msg, &facts)) {
                     Some(Act::File(dest)) => {
-                        if dest == sweep::LOBBY {
-                            held += 1;
-                        }
                         to_file.insert(email, dest);
                         false
                     }
@@ -142,13 +109,8 @@ impl MailApp {
                 }
             })
             .collect();
-        self.run_wasm_plugins(account, &kept, cx);
         if to_file.is_empty() {
             return kept;
-        }
-        if held > 0 && active {
-            self.status = format!("{held} message{} from someone new waiting in the Lobby", if held == 1 { "" } else { "s" }).into();
-            self.status_is_error = false;
         }
         let session = if active { self.preview_session.clone().or_else(|| self.session.clone()) } else { None };
         let (store, acct) = (self.store.clone(), account.to_string());
@@ -166,12 +128,7 @@ impl MailApp {
                     };
                     let mut errors = Vec::new();
                     for (email, dest) in to_file {
-                        let done = if dest == sweep::LOBBY {
-                            sweep::hold_in_lobby(&session, &store, &acct, &email)
-                        } else {
-                            sweep::apply_sender(&session, &store, &acct, &email, &dest)
-                        };
-                        if let Err(e) = done {
+                        if let Err(e) = sweep::apply_sender(&session, &store, &acct, &email, &dest) {
                             errors.push(format!("Could not file new mail from {email}: {e:#}"));
                         }
                     }
@@ -257,110 +214,152 @@ fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: &[wa
     Ok((moved, notes))
 }
 
+/// Whether a plugin's actions take the message out of the Inbox.
+fn leaves_inbox(actions: &[wasm_host::Action]) -> bool {
+    actions.iter().any(|a| matches!(a, wasm_host::Action::MoveTo(_) | wasm_host::Action::Archive))
+}
+
 impl MailApp {
-    /// New Inbox mail that stayed after the built-ins goes to the
-    /// WebAssembly plugins, in the background.
-    fn run_wasm_plugins(&mut self, account: &str, kept: &[Envelope], cx: &mut Context<Self>) {
-        let Some(host) = self.wasm.clone() else { return };
-        if !host.lock().unwrap().plugins.iter().any(|p| p.running()) {
-            return;
+    /// New mail left after sender rules goes to the WebAssembly plugins
+    /// first; then what they didn't move is shown and announced, and their
+    /// actions are carried out. Without plugins it's shown at once.
+    pub fn plugin_arrivals(&mut self, account: &str, kept: Vec<Envelope>, cx: &mut Context<Self>) {
+        let inbox: Vec<Envelope> = kept.iter().filter(|e| e.mailbox.eq_ignore_ascii_case(mail::INBOX)).cloned().collect();
+        let loading = self.wasm.is_none();
+        let none_running = self.wasm.as_ref().is_some_and(|h| !h.lock().unwrap().plugins.iter().any(|p| p.running()));
+        if inbox.is_empty() || none_running {
+            return self.show_arrivals(account, kept, cx);
         }
-        let msgs: Vec<Envelope> = kept.iter().filter(|e| e.mailbox.eq_ignore_ascii_case(mail::INBOX)).cloned().collect();
-        if msgs.is_empty() {
-            return;
-        }
+        let mine: Vec<String> = std::iter::once(account.to_string()).chain(self.identities_for(account).into_iter().map(|i| i.email)).collect();
+        let arrival = wasm_host::Arrival {
+            mine,
+            batch: kept.iter().map(|e| (e.mailbox.clone(), e.id.clone())).collect(),
+            batch_mids: kept.iter().filter_map(|e| e.message_id.clone()).collect(),
+        };
         let active = *self.account == *account;
         let session = if active { self.preview_session.clone().or_else(|| self.session.clone()) } else { None };
-        let acct = account.to_string();
+        let (store, acct) = (self.store.clone(), account.to_string());
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let (changed, notes, problems) = cx
+            // Mail that arrives while the plugins are still loading waits
+            // for them (a few seconds at most).
+            let mut host = None;
+            for _ in 0..(if loading { 50 } else { 1 }) {
+                host = this.update(cx, |this, _| this.wasm.clone()).ok().flatten();
+                if host.is_some() {
+                    break;
+                }
+                cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
+            }
+            let Some(host) = host else {
+                this.update(cx, |this, cx| this.show_arrivals(&acct, kept, cx)).ok();
+                return;
+            };
+            // Decide, and take what leaves the Inbox out of the cache now so
+            // a refresh can't show it before Gmail has moved it.
+            let a = acct.clone();
+            let st = store.clone();
+            let (work, mut problems) = cx
                 .background_executor()
                 .spawn(async move {
                     let mut problems = Vec::new();
                     let mut work = Vec::new();
-                    for e in &msgs {
-                        let (acts, mut p) = host.lock().unwrap().arrived(&to_wit(&acct, e));
+                    let mut h = host.lock().unwrap();
+                    h.arrival = arrival;
+                    for e in &inbox {
+                        let (acts, mut p) = h.arrived(&to_wit(&a, e));
                         problems.append(&mut p);
-                        for (_, a) in acts {
-                            work.push((e.mailbox.clone(), e.id.clone(), a));
+                        let actions: Vec<wasm_host::Action> = acts.into_iter().flat_map(|(_, a)| a).collect();
+                        if !actions.is_empty() {
+                            work.push((e.mailbox.clone(), e.id.clone(), actions));
                         }
                     }
-                    let mut notes = Vec::new();
-                    let mut changed = false;
-                    if work.is_empty() {
-                        return (changed, notes, problems);
+                    h.arrival = Default::default();
+                    drop(h);
+                    if let Some(store) = &st {
+                        for (mailbox, id, actions) in &work {
+                            if leaves_inbox(actions) {
+                                store.lock().unwrap().remove_envelope(&a, mailbox, id).ok();
+                            }
+                        }
                     }
+                    (work, problems)
+                })
+                .await;
+            let gone: HashSet<(String, String)> =
+                work.iter().filter(|(_, _, a)| leaves_inbox(a)).map(|(m, i, _)| (m.clone(), i.clone())).collect();
+            let shown: Vec<Envelope> = kept.into_iter().filter(|e| !gone.contains(&(e.mailbox.clone(), e.id.clone()))).collect();
+            let notes: Vec<String> = work
+                .iter()
+                .flat_map(|(_, _, acts)| acts.iter().filter_map(|a| if let wasm_host::Action::Notify(t) = a { Some(t.clone()) } else { None }))
+                .collect();
+            this.update(cx, |this, cx| {
+                this.show_arrivals(&acct, shown, cx);
+                if let Some(first) = notes.first() {
+                    this.status = if notes.len() > 1 { format!("{first} (and {} more)", notes.len() - 1) } else { first.clone() }.into();
+                    this.status_is_error = false;
+                }
+            })
+            .ok();
+            if work.is_empty() {
+                this.update(cx, |this, cx| this.report_plugin_problems(&problems, cx)).ok();
+                return;
+            }
+            // Carry out the actions.
+            let a = acct.clone();
+            let mut more = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut problems = Vec::new();
                     let session = match session {
                         Some(s) => s,
-                        None => match Session::connect(&acct) {
+                        None => match Session::connect(&a) {
                             Ok(s) => Arc::new(Mutex::new(s)),
-                            Err(e) => {
-                                problems.push(format!("Plugins: could not connect to {acct}: {e:#}"));
-                                return (changed, notes, problems);
-                            }
+                            Err(e) => return vec![format!("Plugins: could not connect to {a}: {e:#}")],
                         },
                     };
                     for (mailbox, id, actions) in work {
-                        match apply_actions(&session, &mailbox, &id, &actions) {
-                            Ok((moved, mut n)) => {
-                                changed |= moved || !actions.is_empty();
-                                notes.append(&mut n);
-                            }
-                            Err(e) => problems.push(format!("Plugins: Gmail refused a change: {e:#}")),
+                        if let Err(e) = apply_actions(&session, &mailbox, &id, &actions) {
+                            problems.push(format!("Plugins: Gmail refused a change: {e:#}"));
                         }
                     }
-                    (changed, notes, problems)
+                    problems
                 })
                 .await;
+            problems.append(&mut more);
             this.update(cx, |this, cx| {
-                for p in &problems {
-                    crate::errlog::record(&this.account, p);
+                this.report_plugin_problems(&problems, cx);
+                if active {
+                    this.refresh_folders(cx);
                 }
-                if let Some(first) = problems.first() {
-                    this.status = first.clone().into();
-                    this.status_is_error = true;
-                } else if let Some(n) = notes.first() {
-                    this.status = n.clone().into();
-                    this.status_is_error = false;
-                }
-                if changed && active {
-                    this.refresh_open_folder(cx);
-                }
-                cx.notify();
             })
             .ok();
         })
         .detach();
     }
+
+    fn report_plugin_problems(&mut self, problems: &[String], cx: &mut Context<Self>) {
+        for p in problems {
+            crate::errlog::record(&self.account, p);
+        }
+        if let Some(first) = problems.first() {
+            self.status = first.clone().into();
+            self.status_is_error = true;
+        }
+        cx.notify();
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{same_side, Act, Arrival, Facts, Plugin, Screener, SenderRules};
-
-    fn facts(rule: Option<&str>, known: bool, on: bool, since: i64) -> Facts<'_> {
-        Facts { rule, known, screener: on, screener_since: since }
-    }
-
-    #[test]
-    fn screener_holds_only_new_strangers() {
-        let now = chrono::Utc::now().timestamp();
-        let since = now - 60;
-        let msg = Arrival { account: "a@x.com", email: "new@shop.com", mailbox: "INBOX", ts: now };
-        assert_eq!(Screener.arrived(&msg, &facts(None, false, true, since)), Some(Act::File("Lobby".into())));
-        assert_eq!(Screener.arrived(&msg, &facts(None, true, true, since)), None, "known sender");
-        assert_eq!(Screener.arrived(&msg, &facts(Some("keep"), false, true, since)), None, "decided already");
-        let old = Arrival { ts: now - 3600, ..msg };
-        assert_eq!(Screener.arrived(&old, &facts(None, false, true, since)), None, "arrived before it was switched on");
-        let msg = Arrival { ts: now, ..old };
-        assert_eq!(Screener.arrived(&msg, &facts(None, false, false, since)), None, "off for this account");
-    }
+    use super::{same_side, Act, Arrival, Facts, Plugin, SenderRules};
 
     #[test]
     fn rules_file_inbox_mail() {
         let msg = Arrival { account: "a@x.com", email: "n@shop.com", mailbox: "INBOX", ts: 0 };
-        assert_eq!(SenderRules.arrived(&msg, &facts(Some("Reading"), true, false, 0)), Some(Act::File("Reading".into())));
-        assert_eq!(SenderRules.arrived(&msg, &facts(Some("keep"), true, false, 0)), None);
+        assert_eq!(SenderRules.arrived(&msg, &Facts { rule: Some("Reading") }), Some(Act::File("Reading".into())));
+        assert_eq!(SenderRules.arrived(&msg, &Facts { rule: Some("keep") }), None);
+        let sent = Arrival { mailbox: "[Gmail]/Sent Mail", ..msg };
+        assert_eq!(SenderRules.arrived(&sent, &Facts { rule: Some("Reading") }), None);
     }
 
     #[test]

@@ -103,23 +103,25 @@ integrations) will ship as sandboxed WebAssembly plugins.
       all of a sender's mail, past and future: `r` Reading, `c` Records, `x` Screened
       Out (Gmail labels; mail leaves the Inbox), `i` keep. 8 s undo window (`⌘Z`).
       Rules file new Inbox mail from those senders on every refresh.
-- [x] Screener (per account, Settings → General): a first email from someone new
+- [x] Screener (a plugin, `plugins/screener`; list the accounts to screen in its
+      `config.toml` as `screen = "you@example.com"`): a first email from someone new
       waits in the **Lobby** label instead of the Inbox. In the Lobby, `e` lets the
       sender in (their mail goes to the Inbox and they stay there from now on) and
       `b` screens them out; ⇧R / ⇧C file them in Reading or Records. Known senders
       come straight through: anyone you've written to, anyone you've had other mail
-      from, colleagues on your work domain and your own addresses. Only mail that
-      arrives after you switch it on is screened.
+      from, colleagues on your work domain, anyone with a sender rule and your own
+      addresses. Only mail that arrives after you add an account is screened, and
+      never mail more than 3 days old.
 
 ### Plugins
 
-New mail goes through one path (`src/plugins.rs`): the core works out the facts
-(the sender's rule, whether you know them), asks each built-in plugin in turn,
-and carries out what the first one answers. Sender rules and the Screener are the
-first two; they're written to the same shape the sandboxed WebAssembly plugins
-get, so they can move out of the core later.
+New mail goes through one path (`src/plugins.rs`). Sender rules, built in
+because the Sweep, the Lobby and block/allow all write them, file mail from
+senders you've decided about. What's left goes to the WebAssembly plugins
+*before* it's shown or announced, so mail a plugin moves (the Screener's Lobby,
+a Filter rule) never flashes into the Inbox or sets off a notification.
 
-After the built-ins, new Inbox mail goes to the WebAssembly plugins in
+The plugins live in
 `~/.config/wax/plugins/<id>/plugin.wasm` (interface: `wit/plugin.wit`,
 `wax:plugin@0.2.0`). Each call runs on a fresh instance with no files, no
 network, 64 MB of memory and a fuel limit, so a plugin that loops or runs away

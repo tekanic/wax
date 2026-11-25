@@ -7,7 +7,7 @@ empty folder to a working plugin, then covers the whole interface.
 - Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.2.0`
 - Host: [`src/wasm_host.rs`](../src/wasm_host.rs)
 - Examples: [`plugins/sweep`](../plugins/sweep) (a sender view),
-  [`plugins/filter-rules`](../plugins/filter-rules) (acts on new mail)
+  [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail)
 
 ## How plugins work
 
@@ -149,13 +149,19 @@ you learn in storage (`storage-get` and `storage-set`).
 | Export | When Wax calls it | Needs |
 |---|---|---|
 | `manifest` | At load, and whenever the plugins reload | — |
-| `on-message-received` | Each new Inbox message, after the built-ins (sender rules, then the Screener) have kept it | `read-envelopes` |
+| `on-message-received` | Each new Inbox message that sender rules didn't file, **before** it's shown or announced | `read-envelopes` |
 | `get-sender-view` | When you open the Sweep (`g w`); the first running plugin that returns a view wins | `read-envelopes` |
 | `on-sender-key` | When you press one of your view's keys on a sender row | `read-envelopes` |
 | `commands`, `run-command`, `panel` | Not called yet; return empty values | — |
 
-A message's actions run in the background over IMAP. Labels and flags go first,
-then a move or archive.
+A message a plugin moves or archives never appears in the Inbox or as a
+notification. The actions themselves then run in the background over IMAP,
+labels and flags first, then the move or archive. Wax waits for every plugin
+before showing new mail, so keep `on-message-received` quick.
+
+[`plugins/screener`](../plugins/screener) is a complete example: it holds mail
+from strangers in the Lobby using `knows-sender`, and remembers when each
+account was switched on in storage.
 
 ## Permissions
 
@@ -195,6 +201,7 @@ All live in `wax::plugin::host`.
 | `log(text)` | Reports a line in the status bar and in Settings → Problems (at most 20 per call) | — |
 | `config()` | Your `config.toml` as text, or `""` | — |
 | `senders(account, limit)` | Senders by volume from the local cache, with their rule | `read-envelopes` |
+| `knows-sender(message)` | Whether you know its sender: your own address, a colleague at your work domain, someone you've written to, someone with a sender rule, or other mail from them (not the Lobby, Spam, Trash or this batch) | `read-envelopes` |
 | `storage-get(key)`, `storage-set(key, value)` | Your key-value store | `storage` |
 | `message-text(...)` | Message text | Not yet |
 | `http-get(url)` | HTTPS GET | Not yet |
@@ -275,7 +282,8 @@ The interface is versioned (`wax:plugin@0.2.0`) and still changing: a plugin
 built against one version won't load in a Wax built with another. When it
 changes, rebuild against the new `wit/plugin.wit`.
 
-- **v0.2** added sender views, `senders` and `file-sender`.
+- **v0.2** added sender views, `senders`, `knows-sender` and `file-sender`, and
+  moved `on-message-received` ahead of showing new mail.
 - **v0.1** was the first release.
 
 ## Checklist

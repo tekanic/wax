@@ -167,8 +167,13 @@ impl MailApp {
         if let Some(store) = &self.store {
             store_upsert(&store.lock().unwrap(), account, &list).ok();
         }
-        let active = *self.account == *account;
         let kept = self.dispatch_arrivals(account, list, cx);
+        self.plugin_arrivals(account, kept, cx);
+    }
+
+    /// Put new mail that stayed in the open list and announce it.
+    pub fn show_arrivals(&mut self, account: &str, kept: Vec<Envelope>, cx: &mut Context<Self>) {
+        let active = *self.account == *account;
         let in_inbox = self.query.is_empty()
             && (self.unified || (active && self.active().is_some_and(|m| m.name.eq_ignore_ascii_case(mail::INBOX))));
         if in_inbox {

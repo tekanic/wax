@@ -2,7 +2,7 @@
 //
 // Implemented by the host so far: manifest, on-message-received,
 // get-sender-view / on-sender-key, and the host functions log, config,
-// storage and senders. commands / run-command / panel are called later;
+// storage, senders and knows-sender. commands / run-command / panel are called later;
 // plugins return empty values for now. message-text and http-get answer
 // "not available yet".
 //
@@ -187,6 +187,12 @@ interface host {
     /// Needs `read-envelopes`. Senders of an account by volume, at most `limit`.
     senders: func(account: string, limit: u32) -> result<list<sender>, string>;
 
+    /// Needs `read-envelopes`. Whether you know the sender of `message`:
+    /// one of your own addresses, a colleague at your work domain, someone
+    /// you've written to, someone with a sender rule, or someone you have
+    /// other mail from (not counting the Lobby, Spam, Trash or this batch).
+    knows-sender: func(message: envelope) -> bool;
+
     /// Needs `storage`. Per-plugin key-value store.
     storage-get: func(key: string) -> option<string>;
     storage-set: func(key: string, value: string);
@@ -200,7 +206,9 @@ world plugin {
     /// Called once at load. Declares identity and requested permissions.
     export manifest: func() -> manifest;
 
-    /// Called for each new message after sync (needs `read-envelopes`).
+    /// Called for each new Inbox message after sender rules, before it's
+    /// shown or announced (needs `read-envelopes`). A message moved or
+    /// archived here never appears in the Inbox.
     export on-message-received: func(message: envelope) -> list<action>;
 
     /// Commands for the palette and message toolbar.
