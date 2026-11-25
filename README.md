@@ -24,7 +24,7 @@ integrations) will ship as sandboxed WebAssembly plugins.
 - [x] HTML email reduced to readable text with html2text (real rendering still open)
 - [x] Draft plugin interface: `wit/plugin.wit` (validates with `wasm-tools component wit wit/`)
 - [x] Verify against Gmail with `--check`
-- [ ] Plugin host prototype (wasmtime) + one sample plugin
+- [x] Plugin host prototype (wasmtime) + one sample plugin (Filter rules)
 
 ## Phase 1: read-only client (in progress)
 
@@ -117,7 +117,26 @@ New mail goes through one path (`src/plugins.rs`): the core works out the facts
 (the sender's rule, whether you know them), asks each built-in plugin in turn,
 and carries out what the first one answers. Sender rules and the Screener are the
 first two; they're written to the same shape the sandboxed WebAssembly plugins
-will get, so they can move out of the core later.
+get, so they can move out of the core later.
+
+After the built-ins, new Inbox mail goes to the WebAssembly plugins in
+`~/.config/wax/plugins/<id>/plugin.wasm` (interface: `wit/plugin.wit`,
+`wax:plugin@0.1.0`). Each call runs on a fresh instance with no files, no
+network, 64 MB of memory and a fuel limit, so a plugin that loops or runs away
+is stopped and switched off. A new plugin starts off; Settings → Plugins shows
+what it asks for and switches it on, which writes its `grants.toml`. Actions
+beyond what was granted are refused. Each plugin reads its own `config.toml`.
+
+```sh
+scripts/build-plugins.sh            # build plugins/* and install them
+```
+
+The first plugin is **Filter rules** (`plugins/filter-rules`), one rule per line:
+
+```
+subject contains "invoice" => label "Receipts"
+from ends-with "@github.com" => move "GitHub"
+```
 
 ## Your files
 
@@ -264,6 +283,8 @@ PATH=$T:$PATH RUSTC=$T/rustc cargo run
 
 - `src/main.rs` — app shell, panes, key bindings
 - `src/mail.rs` — IMAP session (io-email), Keychain lookup, `--check`
-- `wit/plugin.wit` — draft plugin interface (actions, commands, panels, permissions)
+- `wit/plugin.wit` — plugin interface (actions, commands, panels, permissions)
+- `src/wasm_host.rs` — sandboxed plugin host (wasmtime); `src/plugins_pane.rs` — Settings → Plugins
+- `plugins/` — plugins, each its own crate built for `wasm32-wasip2` (`test-*` are for the host's tests)
 - `src/model.rs` — placeholder envelope model and fake data (replaced by the
   SQLite store in Phase 1)

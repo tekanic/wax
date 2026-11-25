@@ -29,6 +29,8 @@ mod md;
 mod model;
 mod oauth;
 mod plugins;
+mod plugins_pane;
+mod wasm_host;
 mod problems;
 mod rules;
 mod store;
@@ -372,6 +374,8 @@ struct MailApp {
     label_counts: std::collections::HashMap<String, (u64, u64)>,
     /// When the files in ~/.config/wax last changed (config_watch.rs).
     config_seen: config_watch::Seen,
+    /// WebAssembly plugins (None until they've loaded).
+    wasm: Option<Arc<Mutex<wasm_host::Host>>>,
     /// App defaults (font, layout, default signatures).
     settings: settings::Settings,
     signatures: Vec<signature::Signature>,
@@ -467,6 +471,7 @@ impl MailApp {
             rules_seen: None,
             label_counts: Default::default(),
             config_seen: Default::default(),
+            wasm: None,
             settings: settings::Settings::default(),
             signatures: Vec::new(),
             identities: Vec::new(),
@@ -492,6 +497,7 @@ impl MailApp {
         app.identities = identity::load();
         app.assign_signatures();
         app.watch_config(cx);
+        app.reload_plugins(cx);
         match app.accounts.first().map(|a| a.email.clone()) {
             Some(first) => {
                 app.account = first.as_str().into();

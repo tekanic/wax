@@ -15,6 +15,8 @@ pub struct Seen {
     settings: Option<SystemTime>,
     /// account.toml, identities and signature.toml files: (path, mtime).
     others: Vec<(String, SystemTime)>,
+    /// plugin.wasm and grants.toml in each plugin folder.
+    plugins: Vec<(String, SystemTime)>,
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
@@ -43,7 +45,18 @@ pub fn look() -> Seen {
         tomls(&dir.join(sub), 2, &mut others);
     }
     others.sort();
-    Seen { keymap: modified(&keys::keymap_file()), settings: modified(&files::settings_file()), others }
+    let mut plugins = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(crate::wasm_host::plugins_dir()) {
+        for dir in rd.flatten().map(|e| e.path()) {
+            for f in ["plugin.wasm", "grants.toml"] {
+                if let Some(t) = modified(&dir.join(f)) {
+                    plugins.push((dir.join(f).to_string_lossy().into_owned(), t));
+                }
+            }
+        }
+    }
+    plugins.sort();
+    Seen { keymap: modified(&keys::keymap_file()), settings: modified(&files::settings_file()), others, plugins }
 }
 
 impl MailApp {
@@ -72,6 +85,9 @@ impl MailApp {
                 self.status = errors[0].clone().into();
                 self.status_is_error = true;
             }
+        }
+        if before.plugins != now.plugins {
+            self.reload_plugins(cx);
         }
         if before.settings != now.settings {
             self.settings = crate::settings::Settings::load();

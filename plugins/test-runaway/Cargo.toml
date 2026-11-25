@@ -1,0 +1,19 @@
+[package]
+name = "wax-test-runaway"
+version = "0.1.0"
+edition = "2021"
+description = "Test plugin for Wax: loops forever on new mail, to prove the sandbox stops it"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+strip = true
+
+[workspace]

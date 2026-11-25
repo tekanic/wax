@@ -1064,7 +1064,7 @@ fn ensure_trash_or_spam(mailbox: &str) -> Result<()> {
     }
 }
 
-fn imap_quote(s: &str) -> String {
+pub fn imap_quote(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 

@@ -1,0 +1,12 @@
+# Filter rules: one rule per line, run on new Inbox mail.
+#
+#   <field> <test> "<text>" => <action> ["<label>"]
+#
+# field:  from, to, subject
+# test:   contains, is, starts-with, ends-with   (case doesn't matter)
+# action: label "Name", move "Name", archive, read, star
+#
+# Examples (remove the # to use):
+# subject contains "invoice" => label "Receipts"
+# from ends-with "@github.com" => move "GitHub"
+# from is "newsletter@example.com" => archive

@@ -142,6 +142,7 @@ impl MailApp {
                 }
             })
             .collect();
+        self.run_wasm_plugins(account, &kept, cx);
         if to_file.is_empty() {
             return kept;
         }
@@ -189,6 +190,146 @@ impl MailApp {
         })
         .detach();
         kept
+    }
+}
+
+/// The plugin interface's view of a message.
+fn to_wit(account: &str, e: &Envelope) -> wasm_host::Envelope {
+    let mut flags = Vec::new();
+    if !e.unread {
+        flags.push("\\Seen".to_string());
+    }
+    if e.starred {
+        flags.push("\\Flagged".to_string());
+    }
+    let name = (!e.from.is_empty() && e.from != e.from_email).then(|| e.from.to_string());
+    wasm_host::Envelope {
+        account: account.to_string(),
+        mailbox: e.mailbox.clone(),
+        id: e.id.clone(),
+        message_id: e.message_id.clone(),
+        from: vec![wasm_host::Address { name, email: e.from_email.to_string() }],
+        to: Vec::new(),
+        subject: e.subject.to_string(),
+        date: chrono::DateTime::from_timestamp(e.ts, 0).map(|d| d.to_rfc3339()),
+        flags,
+        labels: Vec::new(),
+    }
+}
+
+/// Carry out one plugin's actions on one message. Labels and flags go
+/// first; moving or archiving last, since that takes it out of `mailbox`.
+fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: &[wasm_host::Action]) -> anyhow::Result<(bool, Vec<String>)> {
+    use wasm_host::Action as A;
+    let ids = [id.to_string()];
+    let mut notes = Vec::new();
+    let mut moved = false;
+    let rank = |a: &A| matches!(a, A::MoveTo(_) | A::Archive) as u8;
+    let mut ordered: Vec<&A> = actions.iter().collect();
+    ordered.sort_by_key(|a| rank(a));
+    for a in ordered {
+        let mut s = session.lock().unwrap();
+        match a {
+            A::AddLabel(l) => {
+                s.ensure_mailbox(l)?;
+                s.copy_ids(mailbox, l, &ids)?;
+            }
+            A::RemoveLabel(l) => s.store_op(mailbox, &ids, &format!("-X-GM-LABELS ({})", mail::imap_quote(l)))?,
+            A::MarkRead(on) => s.store_op(mailbox, &ids, if *on { "+FLAGS.SILENT (\\Seen)" } else { "-FLAGS.SILENT (\\Seen)" })?,
+            A::Star(on) => s.store_op(mailbox, &ids, if *on { "+FLAGS.SILENT (\\Flagged)" } else { "-FLAGS.SILENT (\\Flagged)" })?,
+            A::MoveTo(l) if !moved => {
+                s.ensure_mailbox(l)?;
+                s.copy_ids(mailbox, l, &ids)?;
+                s.move_ids(mailbox, ALL_MAIL, &ids)?;
+                moved = true;
+            }
+            A::Archive if !moved => {
+                s.move_ids(mailbox, ALL_MAIL, &ids)?;
+                moved = true;
+            }
+            A::MoveTo(_) | A::Archive => {}
+            A::Notify(text) => notes.push(text.clone()),
+            A::SnoozeUntil(_) => notes.push("snooze isn't available to plugins yet".into()),
+            A::OpenDraft(_) => notes.push("opening drafts isn't available to plugins yet".into()),
+        }
+    }
+    Ok((moved, notes))
+}
+
+impl MailApp {
+    /// New Inbox mail that stayed after the built-ins goes to the
+    /// WebAssembly plugins, in the background.
+    fn run_wasm_plugins(&mut self, account: &str, kept: &[Envelope], cx: &mut Context<Self>) {
+        let Some(host) = self.wasm.clone() else { return };
+        if !host.lock().unwrap().plugins.iter().any(|p| p.running()) {
+            return;
+        }
+        let msgs: Vec<Envelope> = kept.iter().filter(|e| e.mailbox.eq_ignore_ascii_case(mail::INBOX)).cloned().collect();
+        if msgs.is_empty() {
+            return;
+        }
+        let active = *self.account == *account;
+        let session = if active { self.preview_session.clone().or_else(|| self.session.clone()) } else { None };
+        let acct = account.to_string();
+        cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            let (changed, notes, problems) = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut problems = Vec::new();
+                    let mut work = Vec::new();
+                    for e in &msgs {
+                        let (acts, mut p) = host.lock().unwrap().arrived(&to_wit(&acct, e));
+                        problems.append(&mut p);
+                        for (_, a) in acts {
+                            work.push((e.mailbox.clone(), e.id.clone(), a));
+                        }
+                    }
+                    let mut notes = Vec::new();
+                    let mut changed = false;
+                    if work.is_empty() {
+                        return (changed, notes, problems);
+                    }
+                    let session = match session {
+                        Some(s) => s,
+                        None => match Session::connect(&acct) {
+                            Ok(s) => Arc::new(Mutex::new(s)),
+                            Err(e) => {
+                                problems.push(format!("Plugins: could not connect to {acct}: {e:#}"));
+                                return (changed, notes, problems);
+                            }
+                        },
+                    };
+                    for (mailbox, id, actions) in work {
+                        match apply_actions(&session, &mailbox, &id, &actions) {
+                            Ok((moved, mut n)) => {
+                                changed |= moved || !actions.is_empty();
+                                notes.append(&mut n);
+                            }
+                            Err(e) => problems.push(format!("Plugins: Gmail refused a change: {e:#}")),
+                        }
+                    }
+                    (changed, notes, problems)
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                for p in &problems {
+                    crate::errlog::record(&this.account, p);
+                }
+                if let Some(first) = problems.first() {
+                    this.status = first.clone().into();
+                    this.status_is_error = true;
+                } else if let Some(n) = notes.first() {
+                    this.status = n.clone().into();
+                    this.status_is_error = false;
+                }
+                if changed && active {
+                    this.refresh_open_folder(cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 }
 

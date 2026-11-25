@@ -60,6 +60,7 @@ pub enum Pane {
     Writing,
     Labels,
     Problems,
+    Plugins,
     Addresses,
     Signatures,
 }
@@ -657,6 +658,7 @@ impl MailApp {
             .child(tab("pane-writing", "General", Pane::Writing))
             .child(tab("pane-addresses", "From addresses", Pane::Addresses))
             .child(tab("pane-labels", "Labels", Pane::Labels))
+            .child(tab("pane-plugins", "Plugins", Pane::Plugins))
             .child(tab("pane-problems", "Problems", Pane::Problems))
             .child(tab("pane-signatures", "Signatures", Pane::Signatures))
             .child(div().flex_1())
@@ -669,6 +671,7 @@ impl MailApp {
             Pane::Writing => self.render_writing_pane(cx).into_any_element(),
             Pane::Labels => self.render_labels_pane(cx).into_any_element(),
             Pane::Problems => self.render_problems_pane(cx).into_any_element(),
+            Pane::Plugins => self.render_plugins_pane(cx).into_any_element(),
             Pane::Signatures => self.render_signatures_pane(cx).into_any_element(),
             Pane::Addresses => self.render_addresses_pane(cx).into_any_element(),
         };

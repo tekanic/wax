@@ -1,7 +1,13 @@
-// gpui-mail plugin interface — DRAFT v0 (not implemented yet).
+// Wax plugin interface, v0.1.
+//
+// Implemented by the host so far: manifest, on-message-received, and the
+// host functions log, config and storage. commands / run-command / panel
+// are called later; plugins return empty values for now. message-text and
+// http-get answer "not available yet".
 //
 // Design rules:
-// - Plugins are WebAssembly components run by wasmtime, one instance each.
+// - Plugins are WebAssembly components run by wasmtime, with no files, no
+//   network and a time and memory limit on every call.
 // - Plugins never mutate mail directly. They return `action`s; the core
 //   checks each one against the permissions the user granted, then applies it.
 // - Plugins never draw GPUI views. They return a small declarative `ui-node`
@@ -9,7 +15,7 @@
 // - Everything a plugin may read arrives as arguments or through `host`,
 //   which is permission-checked too.
 
-package gpui-mail:plugin@0.1.0;
+package wax:plugin@0.1.0;
 
 interface types {
     record address {
@@ -121,6 +127,10 @@ interface host {
     use types.{envelope};
 
     log: func(message: string);
+
+    /// The plugin's own config.toml (in its folder), or "" if there is none.
+    /// No permission needed: it's the plugin's own settings.
+    config: func() -> string;
 
     /// Needs `read-bodies`. Plain text of a message.
     message-text: func(account: string, mailbox: string, id: string) -> result<string, string>;

@@ -25,6 +25,9 @@ sha2 = "0.10"
 ureq = "2"
 url = "2.5.8"
 wry = "0.57.3"
+# Plugin host: WebAssembly components, sandboxed (no files, no network).
+wasmtime = "51"
+wasmtime-wasi = "51"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
