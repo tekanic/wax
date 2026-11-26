@@ -43,6 +43,7 @@ mod signature;
 mod sweep;
 mod table;
 mod theme;
+mod window_state;
 mod threads;
 
 use gpui_kit::prelude::*;
@@ -351,6 +352,7 @@ struct MailApp {
     images_allowed: HashSet<(String, String)>,
     /// Show shortcut hints in the bottom bar (cmd-/ toggles).
     show_hints: bool,
+    bounds_gen: u64,
     width: f32,
     /// The message being written, shown in place of the reader.
     composer: Option<ComposerState>,
@@ -431,6 +433,19 @@ impl MailApp {
         });
 
         let pending = cx.observe_pending_input(window, |_, _, cx| cx.notify());
+        let moved = cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
+            this.bounds_gen += 1;
+            let generation = this.bounds_gen;
+            let bounds = window_state::content(window.window_bounds(), window.viewport_size());
+            cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                cx.background_executor().timer(std::time::Duration::from_millis(400)).await;
+                let current = this.update(cx, |this, _| this.bounds_gen == generation).unwrap_or(false);
+                if current {
+                    cx.background_executor().spawn(async move { window_state::save(&bounds) }).await;
+                }
+            })
+            .detach();
+        });
         let appearance = cx.observe_window_appearance(window, |this: &mut Self, _, cx| {
             this.use_theme(false, cx);
             cx.notify();
@@ -478,6 +493,7 @@ impl MailApp {
             html_view: HtmlView::new(),
             images_allowed: HashSet::new(),
             show_hints: true,
+            bounds_gen: 0,
             width: 1280.,
             composer: None,
             compose_subs: Vec::new(),
@@ -513,7 +529,7 @@ impl MailApp {
             row_menu: None,
             swipe: None,
             swipe_quiet_until: std::time::Instant::now(),
-            _subscriptions: vec![subscription, pending, appearance],
+            _subscriptions: vec![subscription, pending, appearance, moved],
         };
         if let Some(store) = &app.store {
             let moved = files::migrate_from_db(&store.lock().unwrap());
@@ -4044,9 +4060,8 @@ fn main() {
         }
         cx.on_action(|_: &Quit, cx| cx.quit());
 
-        let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
         let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_bounds: Some(window_state::restore(cx)),
             window_min_size: Some(size(px(720.), px(480.))),
             titlebar: Some(TitlebarOptions {
                 title: Some("Wax".into()),
