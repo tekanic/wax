@@ -4,9 +4,10 @@
 
 Mail for the Mac. The rest is plugins.
 
-Wax is a small, keyboard-first mail app for macOS, written in Rust on
-[GPUI](https://gpui.rs) (Zed's UI framework). The core reads, writes and files
-your mail; everything else is a sandboxed WebAssembly plugin you choose.
+Wax is a keyboard-first mail app for macOS, written in Rust, drawn on the GPU
+with [GPUI](https://gpui.rs) (Zed's UI framework) and backed by a local SQLite
+cache. The core reads, writes and files your mail; everything else is a
+sandboxed WebAssembly plugin you choose.
 
 **Website:** [tekanic.github.io/wax](https://tekanic.github.io/wax/)
 
