@@ -85,7 +85,7 @@ beyond what was granted are refused. Each plugin reads its own `config.toml`.
 scripts/build-plugins.sh            # build plugins/* and install them
 ```
 
-**Writing one:** [docs/plugins.md](docs/plugins.md). The interface is MIT licensed, so a plugin can use any license.
+**Writing one:** [the plugin guide](https://tekanic.github.io/wax/plugins/) ([source](docs/plugins.md)). The interface is MIT licensed, so a plugin can use any license.
 
 **The Sweep** (`plugins/sweep`) is a plugin: it ranks senders and sets the keys
 and where each one files a sender's mail (`r = "Reading"   # newsletters` in its
@@ -325,6 +325,14 @@ PATH=$T:$PATH RUSTC=$T/rustc cargo run
 `cargo run -- --check` tests a login without the UI. The repository and binary
 are called `gpui-mail`; the app is Wax.
 
+**The website** lives in `docs/` and is served by GitHub Pages.
+`scripts/build-site.sh` (needs pandoc) builds the user guide from this README
+and the plugin guide from `docs/plugins.md`. `scripts/screenshots.sh` (needs
+`cwebp`) retakes the screenshots in `docs/shots/` from **demo mode**: Wax with
+`WAX_DEMO=1` and a throwaway `HOME` filled with made-up mail by
+`gpui-mail --make-demo`, which never touches the network or your real mail.
+Set `WAX_SHOT_POS` to a spot on a Retina display for sharp captures.
+
 - `src/main.rs`: app shell, panes, key handling; `src/keys.rs`: the keymap
 - `src/mail.rs`: Gmail over IMAP and SMTP with OAuth; `src/store.rs`: the SQLite cache
 - `src/compose.rs`, `src/compose_view.rs`: writing, Markdown, sending
@@ -332,7 +340,7 @@ are called `gpui-mail`; the app is Wax.
 - `src/wasm_host.rs`: the sandboxed plugin host (wasmtime); `wit/plugin.wit`: the plugin interface
 - `src/theme.rs`: Zed theme loading; `src/html_view.rs`: the HTML mail view
 - `plugins/`: the bundled plugins, one crate each (`test-*` are for the host's tests)
-- `docs/`: the website and the plugin guide
+- `docs/`: the website, the guides and their screenshots; `src/demo.rs`: demo mode
 
 ## License
 

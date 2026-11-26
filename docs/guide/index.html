@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User guide · Wax</title>
+<meta name="description" content="Install Wax, sign in with Google, and
+learn the keys, labels, plugins, themes and settings files.">
+<link rel="icon" type="image/png" href="../wax-icon-1024.png">
+<link rel="canonical" href="https://tekanic.github.io/wax/guide/">
+<meta property="og:title" content="User guide · Wax">
+<meta property="og:description" content="Install Wax, sign in with
+Google, and learn the keys, labels, plugins, themes and settings
+files.">
+<meta property="og:image" content="https://tekanic.github.io/wax/shots/og.jpg">
+<meta property="og:url" content="https://tekanic.github.io/wax/guide/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../site.css">
+<style>
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    background-color: #232629;
+    color: #7a7c7d;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #7a7c7d;  padding-left: 4px; }
+div.sourceCode
+  { color: #cfcfc2; background-color: #232629; }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span { color: #cfcfc2; } /* Normal */
+code span.al { color: #95da4c; background-color: #4d1f24; font-weight: bold; } /* Alert */
+code span.an { color: #3f8058; } /* Annotation */
+code span.at { color: #2980b9; } /* Attribute */
+code span.bn { color: #f67400; } /* BaseN */
+code span.bu { color: #7f8c8d; } /* BuiltIn */
+code span.cf { color: #fdbc4b; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #3daee9; } /* Char */
+code span.cn { color: #27aeae; font-weight: bold; } /* Constant */
+code span.co { color: #7a7c7d; } /* Comment */
+code span.cv { color: #7f8c8d; } /* CommentVar */
+code span.do { color: #a43340; } /* Documentation */
+code span.dt { color: #2980b9; } /* DataType */
+code span.dv { color: #f67400; } /* DecVal */
+code span.er { color: #da4453; text-decoration: underline; } /* Error */
+code span.ex { color: #0099ff; font-weight: bold; } /* Extension */
+code span.fl { color: #f67400; } /* Float */
+code span.fu { color: #8e44ad; } /* Function */
+code span.im { color: #27ae60; } /* Import */
+code span.in { color: #c45b00; } /* Information */
+code span.kw { color: #cfcfc2; font-weight: bold; } /* Keyword */
+code span.op { color: #cfcfc2; } /* Operator */
+code span.ot { color: #27ae60; } /* Other */
+code span.pp { color: #27ae60; } /* Preprocessor */
+code span.re { color: #2980b9; background-color: #153042; } /* RegionMarker */
+code span.sc { color: #3daee9; } /* SpecialChar */
+code span.ss { color: #da4453; } /* SpecialString */
+code span.st { color: #f44f4f; } /* String */
+code span.va { color: #27aeae; } /* Variable */
+code span.vs { color: #da4453; } /* VerbatimString */
+code span.wa { color: #da4453; } /* Warning */
+</style>
+</head>
+<body class="doc">
+<header class="wrap top">
+  <a class="mark" href="../" aria-label="Wax home"><img src="../wax-icon-1024.png" alt=""><span class="word">wax</span></a>
+  <nav aria-label="Main"><a href="../#tour">Tour</a><a href="../guide/" aria-current="page">Guide</a><a href="../plugins/">Plugins</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
+</header>
+<div class="wrap docs">
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul>
+    <li><a href="#install" id="toc-install">Install</a></li>
+    <li><a href="#accounts" id="toc-accounts">Accounts</a></li>
+    <li><a href="#keyboard" id="toc-keyboard">Keyboard</a></li>
+    <li><a href="#labels" id="toc-labels">Labels</a></li>
+    <li><a href="#plugins" id="toc-plugins">Plugins</a></li>
+    <li><a href="#themes" id="toc-themes">Themes</a></li>
+    <li><a href="#your-files" id="toc-your-files">Your files</a></li>
+    <li><a href="#problems" id="toc-problems">Problems</a></li>
+    </ul>
+  </aside>
+  <main class="prose">
+    <h1>User guide</h1>
+    <p class="lede">Install Wax, sign in with Google, and learn the
+keys, labels, plugins, themes and settings files.</p>
+<h2 id="install">Install</h2>
+<p>Wax builds from source on an Apple silicon Mac.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/tekanic/wax.git <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> wax</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/install.sh</span></span></code></pre></div>
+<p><code>install.sh</code> makes a release build, signs it with your
+Apple Development certificate if you have one, builds the plugins,
+installs <code>~/Applications/Wax.app</code> and opens it. Run it again
+to update. You'll need <a href="https://rustup.rs">Rust</a> and a Google
+OAuth client for sign-in; see <a href="#accounts">Accounts</a>.</p>
+<h2 id="accounts">Accounts</h2>
+<p>Add accounts in <strong>Settings → Accounts</strong>. Gmail and
+Google Workspace accounts use <strong>Sign in with Google</strong>: your
+browser opens Google's sign-in page and the app never sees your
+password. Tokens are kept in the macOS Keychain (service
+<code>gpui-mail-google</code>). Each account has its own sender name,
+default signatures, From addresses and sender rules, and its own
+new-mail watcher.</p>
+<p>The sidebar keeps <strong>All Inboxes</strong>, <strong>All
+Sent</strong> and your accounts pinned at the top (visible however short
+the window), with the folders of the account on screen below. All
+Inboxes merges every account's Inbox, newest first, each row tagged with
+its account; All Sent does the same for Sent, and a search there covers
+every account's sent mail; reading, replying, archiving, starring and
+sender decisions there act on the message's own account.</p>
+<p>Google sign-in needs an OAuth client:</p>
+<ul>
+<li><strong>Release builds</strong> can carry one, set at build time
+with <code>GPUI_MAIL_GOOGLE_CLIENT_ID</code> and
+<code>GPUI_MAIL_GOOGLE_CLIENT_SECRET</code>. Google limits an unverified
+app with Gmail access to 100 users, so a public release needs Google's
+verification for the <code>https://mail.google.com/</code> scope.</li>
+<li><strong>Without one</strong>, each user brings a client from their
+own Google Cloud project (free, about 10 minutes; the Accounts screen
+lists the steps): turn on the Gmail API; set up Google Auth Platform
+with Audience <em>External</em> and the scope
+<code>https://mail.google.com/</code>; create a <em>Desktop app</em>
+client and choose its downloaded JSON in the app; then
+<strong>Publish</strong> the app, since in <em>Testing</em> Google signs
+everyone out every 7 days. Each account then sees a one-time "Google
+hasn't verified this app" screen (Advanced → Go to …).</li>
+</ul>
+<p>Test a login without the UI: <code>cargo run -- --check</code> (first
+account).</p>
+<h2 id="keyboard">Keyboard</h2>
+<p>Shortcuts are defined once in <code>src/keys.rs</code>; the same
+table drives the key bindings, the hint bar at the bottom of the window
+and the <code>g</code> menu. <code>~/.config/wax/keymap.toml</code>
+changes any of them: a section per place (<code>[list]</code>,
+<code>[writing]</code>, <code>[global]</code>…), lines like
+<code>"shift-e" = "archive"</code>, and <code>"none"</code> to switch a
+key off. Mistakes show in the status bar and Settings → Problems.</p>
+<table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>Where</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>j</code> / <code>k</code>, <code>↓</code> /
+<code>↑</code></td>
+<td>list</td>
+<td>next / previous message</td>
+</tr>
+<tr>
+<td><code>u</code>, <code>⇧⌘U</code></td>
+<td>list</td>
+<td>toggle read / unread</td>
+</tr>
+<tr>
+<td><code>/</code>, <code>⌘F</code></td>
+<td>list, anywhere</td>
+<td>search</td>
+</tr>
+<tr>
+<td><code>g</code> then <code>i</code> <code>s</code> <code>t</code>
+<code>d</code> <code>a</code></td>
+<td>list</td>
+<td>go to Inbox, Starred, Sent, Drafts, All Mail</td>
+</tr>
+<tr>
+<td><code>⏎</code>, <code>↓</code></td>
+<td>search box</td>
+<td>jump into the results</td>
+</tr>
+<tr>
+<td><code>esc</code></td>
+<td>search box, list</td>
+<td>clear the search</td>
+</tr>
+<tr>
+<td><code>c</code> / <code>r</code> / <code>a</code> /
+<code>f</code></td>
+<td>list</td>
+<td>compose / reply / reply all / forward</td>
+</tr>
+<tr>
+<td><code>⌘⏎</code></td>
+<td>writing</td>
+<td>send (8 s to undo with <code>⌘Z</code>)</td>
+</tr>
+<tr>
+<td><code>⌘S</code></td>
+<td>writing</td>
+<td>save draft to Gmail, keep writing</td>
+</tr>
+<tr>
+<td><code>esc</code></td>
+<td>writing</td>
+<td>save draft to Gmail and close</td>
+</tr>
+<tr>
+<td><code>⇧⌘⌫</code></td>
+<td>writing</td>
+<td>discard</td>
+</tr>
+<tr>
+<td><code>⌘B</code> <code>⌘I</code> <code>⌘⇧X</code></td>
+<td>writing</td>
+<td>bold / italic / strikethrough (again to remove)</td>
+</tr>
+<tr>
+<td><code>⌘K</code></td>
+<td>writing</td>
+<td>link (uses a copied URL)</td>
+</tr>
+<tr>
+<td><code>⌘E</code></td>
+<td>writing</td>
+<td>inline code, or a code block for several lines</td>
+</tr>
+<tr>
+<td><code>⌘⇧8</code> <code>⌘⇧7</code> <code>⌘'</code></td>
+<td>writing</td>
+<td>bulleted list / numbered list / quote</td>
+</tr>
+<tr>
+<td><code>⌘⇧P</code></td>
+<td>writing</td>
+<td>preview the message as it will arrive</td>
+</tr>
+<tr>
+<td><code>⌘⇧A</code></td>
+<td>writing</td>
+<td>attach files</td>
+</tr>
+<tr>
+<td><code>⌘⇧B</code></td>
+<td>writing</td>
+<td>Bcc on / off</td>
+</tr>
+<tr>
+<td><code>⏎</code></td>
+<td>Drafts folder</td>
+<td>edit the draft</td>
+</tr>
+<tr>
+<td><code>x</code> / <code>⌘A</code></td>
+<td>list</td>
+<td>mark one / mark all loaded (<code>esc</code> clears)</td>
+</tr>
+<tr>
+<td><code>e</code></td>
+<td>list</td>
+<td>archive marked (or current); in Trash, Spam and Screened Out: back
+to the Inbox</td>
+</tr>
+<tr>
+<td><code>s</code> / <code>i</code></td>
+<td>list</td>
+<td>star / mark important (again to undo)</td>
+</tr>
+<tr>
+<td><code>b</code></td>
+<td>list</td>
+<td>block the sender (Screened Out); in Screened Out: allow them
+back</td>
+</tr>
+<tr>
+<td><code>⇧R</code> / <code>⇧C</code></td>
+<td>list</td>
+<td>file everything from the sender in Reading / Records</td>
+</tr>
+<tr>
+<td>right-click</td>
+<td>list</td>
+<td>menu of everything above, for the message or the selection</td>
+</tr>
+<tr>
+<td>two-finger swipe</td>
+<td>list</td>
+<td>right: read / unread; left: archive (or the folder's
+<code>e</code>)</td>
+</tr>
+<tr>
+<td><code>⌫</code>, <code>#</code></td>
+<td>list</td>
+<td>delete marked (or current) to Trash</td>
+</tr>
+<tr>
+<td><code>⌘Z</code></td>
+<td>list</td>
+<td>undo the last archive, delete or sender decision (8 s)</td>
+</tr>
+<tr>
+<td><code>g w</code></td>
+<td>list</td>
+<td>open the Sweep</td>
+</tr>
+<tr>
+<td><code>r</code> / <code>c</code> / <code>x</code> /
+<code>i</code></td>
+<td>Sweep</td>
+<td>Reading / Records / screen out / keep (set in the Sweep plugin's
+<code>config.toml</code>)</td>
+</tr>
+<tr>
+<td><code>l</code></td>
+<td>list</td>
+<td>label the message(s); ⇧⏎ in the picker also archives</td>
+</tr>
+<tr>
+<td><code>⌘/</code></td>
+<td>anywhere</td>
+<td>hide / show the hint bar</td>
+</tr>
+</tbody>
+</table>
+<p>Single-letter keys only act when the search box isn't focused, so
+they can be typed into a search.</p>
+<h2 id="labels">Labels</h2>
+<p>Press <strong><code>l</code></strong> on a message (or on marked
+messages, or pick "Label…" from the right-click menu) to open the label
+picker: type to filter, the message's current labels are ticked,
+<code>⏎</code> adds or removes the highlighted label, typing a new name
+offers to create it, and <code>⇧⏎</code> labels and archives. In All
+Inboxes it uses the message's own account's labels.</p>
+<p><strong>Settings → Labels</strong> lists each account's Gmail labels:
+create (use <code>/</code> to nest), rename (nested labels and sender
+rules follow) or delete (asks twice; the messages stay in All Mail, only
+the label goes). The Sweep's Reading, Records and Screened Out are
+managed from the Sweep.</p>
+<h2 id="plugins">Plugins</h2>
+<p>New mail goes through one path (<code>src/plugins.rs</code>). Sender
+rules, built in because the Sweep, the Lobby and block/allow all write
+them, file mail from senders you've decided about. What's left goes to
+the WebAssembly plugins <em>before</em> it's shown or announced, so mail
+a plugin moves (the Screener's Lobby, a Filter rule) never flashes into
+the Inbox or sets off a notification.</p>
+<p>The plugins live in
+<code>~/.config/wax/plugins/&lt;id&gt;/plugin.wasm</code> (interface:
+<code>wit/plugin.wit</code>, <code>wax:plugin@0.5.0</code>). Each call
+runs on a fresh instance with no files, no network, 64 MB of memory and
+a fuel limit: a call that runs out of time is skipped, and a plugin that
+keeps doing it is switched off. A new plugin starts off; Settings →
+Plugins shows what it asks for and switches it on, which writes its
+<code>grants.toml</code>. Actions beyond what was granted are refused.
+Each plugin reads its own <code>config.toml</code>.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/build-plugins.sh</span>            <span class="co"># build plugins/* and install them</span></span></code></pre></div>
+<p><strong>Writing one:</strong> <a
+href="https://tekanic.github.io/wax/plugins/">the plugin guide</a> (<a
+href="../plugins/">source</a>). The interface is MIT licensed, so a
+plugin can use any license.</p>
+<p><strong>The Sweep</strong> (<code>plugins/sweep</code>) is a plugin:
+it ranks senders and sets the keys and where each one files a sender's
+mail (<code>r = "Reading"   # newsletters</code> in its
+<code>config.toml</code>). Wax draws the view and keeps the sender
+rules, which the Screener and block/allow use too.</p>
+<p><strong>Snooze &amp; follow-up</strong>
+(<code>plugins/snooze</code>): <code>z</code> (or the Snooze button)
+hides a message or conversation under a Snoozed label until a time, then
+puts it back in the Inbox unread; <code>w</code> on a message you sent
+brings it back if nobody has replied by then. Pick a time or type one:
+<code>fri 9am</code>, <code>12/3 5pm</code>, <code>in 2 days</code>,
+<code>tomorrow</code>. Reminders live in the local cache, survive
+restarts and are checked every 30 seconds; snoozing again replaces the
+time, "Back to the Inbox now" unsnoozes. Its <code>config.toml</code>
+sets the morning and evening hours.</p>
+<p><strong>Phishing warnings</strong> (<code>plugins/phishing</code>):
+new mail from someone you don't know gets a <strong>Suspicious</strong>
+label when it adds up to phishing, and the status bar says why: a
+display name claiming a known brand (PayPal, Microsoft, banks,
+carriers…) from a domain that isn't theirs, a lookalike of a brand's or
+a correspondent's domain (paypa1.com, ernco.com), a brand's name inside
+a stranger's domain, an address shown in the name that isn't the
+sender's, a punycode domain, or a contact's name from a new domain plus
+pressure wording ("quick favor", "gift card", "bank details"). With
+<code>read-bodies</code> it also reads the message: Gmail's
+DMARC/SPF/DKIM verdict, a Reply-To pointing elsewhere, links that show a
+brand's or contact's site but go somewhere else, links to lookalike
+domains or bare IP addresses, and program or web-page attachments. Its
+<code>config.toml</code> sets the label, trusted domains and extra
+brands to protect. On 1,684 past messages from one-time senders it
+flagged 2, both reasonable; on 315 recent messages it flagged none of
+the Inbox and 32 of 135 in Spam (mostly forged senders). When it's
+switched on it sweeps the mail you already have (outside Spam and
+Trash), and it checks a message again when you open it or move it out of
+Spam, so a suspect message carries a ⚠ banner with the reasons wherever
+you read it.</p>
+<p><strong>Filter rules</strong> (<code>plugins/filter-rules</code>)
+acts on new mail, one rule per line:</p>
+<pre><code>subject contains &quot;invoice&quot; =&gt; label &quot;Receipts&quot;
+from ends-with &quot;@github.com&quot; =&gt; move &quot;GitHub&quot;</code></pre>
+<h2 id="themes">Themes</h2>
+<p>Wax uses Zed's theme format, so any Zed theme works unchanged. Built
+in: Wax Dark and Wax Light, plus Zed's One, Ayu and Gruvbox families
+(MIT licensed; see <code>assets/themes/*/LICENSE</code>). Settings →
+General picks a light theme, a dark theme, and whether to match the Mac,
+use light or use dark. Drop more themes into
+<code>~/.config/wax/themes/</code> (themes in
+<code>~/.config/zed/themes/</code> show up too). Saving a theme file
+restyles Wax within two seconds, so you can tune one while you look at
+it.</p>
+<p>Wax reads these Zed colors and works out anything a theme leaves
+out:</p>
+<table>
+<thead>
+<tr>
+<th>Zed key</th>
+<th>In Wax</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>editor.background</code></td>
+<td>Reading pane, compose</td>
+</tr>
+<tr>
+<td><code>panel.background</code></td>
+<td>Sidebar</td>
+</tr>
+<tr>
+<td><code>surface.background</code></td>
+<td>Message list</td>
+</tr>
+<tr>
+<td><code>elevated_surface.background</code></td>
+<td>Menus and pickers</td>
+</tr>
+<tr>
+<td><code>border.variant</code>, <code>border</code></td>
+<td>Dividers; inputs and menu edges</td>
+</tr>
+<tr>
+<td><code>text</code>, <code>text.muted</code>,
+<code>text.placeholder</code></td>
+<td>Text, secondary text, timestamps and hints</td>
+</tr>
+<tr>
+<td><code>text.accent</code></td>
+<td>Accent: unread dots, primary buttons, links</td>
+</tr>
+<tr>
+<td><code>ghost_element.hover</code>,
+<code>ghost_element.selected</code></td>
+<td>List hover and selection</td>
+</tr>
+<tr>
+<td><code>element.background</code>, <code>element.hover</code>,
+<code>element.active</code></td>
+<td>Search field, buttons, pressed buttons</td>
+</tr>
+<tr>
+<td><code>error</code>, <code>warning</code></td>
+<td>Errors, delete confirmations, plugin warnings</td>
+</tr>
+</tbody>
+</table>
+<p>Messages' HTML and signature previews keep a white page, since that's
+how they'll look to the people who get them.</p>
+<h2 id="your-files">Your files</h2>
+<p>Everything you set up is plain text in <code>~/.config/wax/</code>
+(like Zed's <code>~/.config/zed</code>), so it can be backed up, kept in
+git or edited by hand. Wax picks up a saved change within two seconds;
+Settings → General → Show folder opens it.</p>
+<pre><code>settings.toml                       font, list while writing, theme
+themes/&lt;name&gt;.json                  Zed theme files (any number of themes each)
+keymap.toml                         every shortcut; defaults listed, commented out
+accounts/&lt;email&gt;/account.toml       sender name, sign-in, default signatures
+accounts/&lt;email&gt;/rules.toml         that account&#39;s sender rules: &quot;address&quot; = &quot;keep&quot; or a label
+signatures/&lt;name&gt;/signature.toml    fields, layout, font, links, its account (+ logo.png, logo2.png)
+signatures/.deleted/                deleted signatures, kept just in case
+identities/&lt;email&gt;.toml             extra From addresses (and the account they send through)
+blocks/&lt;name&gt;.md                    blocks for the composer ({{cursor}} = start here)</code></pre>
+<p><code>~/Library/Application Support/gpui-mail/</code> keeps what
+isn't a setting: <code>cache.sqlite</code> (only what can be fetched
+from Gmail again, plus the unsent-message autosave),
+<code>errors.log</code> (Settings → Problems) and
+<code>google-client.json</code>, your Google OAuth client. That one is a
+secret, so it stays out of <code>~/.config</code>. Settings from older
+versions move to <code>~/.config/wax</code> on first start.</p>
+<p><code>gpui-mail --import-signature &lt;file.html&gt; &lt;name&gt;</code>
+brings in an HTML signature (e.g. from Thunderbird's
+<code>sig_file</code>), logos and links included.</p>
+<h2 id="problems">Problems</h2>
+<p>Status messages fade from the bottom bar (errors after 15 s). Errors,
+failed new-mail checks and sync stoppages are kept in
+<code>errors.log</code> in the data folder and shown under
+<strong>Settings → Problems</strong>, newest first, filterable by
+account, with Copy, Show file and Clear. A red <strong>⚠ n</strong> chip
+in the bottom bar counts the ones you haven't looked at; click it to
+open Problems. The app keeps at most <strong>4 connections per
+account</strong> (Gmail allows about 15 per account across all your mail
+apps): normally 2 for the account on screen (3 while older mail is still
+syncing) and 1 for each other account, which its new-mail check shares.
+Settings → Accounts shows how many are open. If the app can't connect
+(for instance Gmail refusing logins while too many connections are open
+across your mail apps), it tries again after 15 s, 30 s, 1 min and then
+every 2 min.</p>
+    <p class="edit"><a href="https://github.com/tekanic/wax/blob/main/README.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>Wax is made by Tekanics LLC. Free and open source under the <a href="https://github.com/tekanic/wax/blob/main/LICENSE">GPL-3.0</a>.</span>
+    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>

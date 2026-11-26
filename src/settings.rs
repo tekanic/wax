@@ -235,6 +235,12 @@ impl MailApp {
 
     pub fn use_theme(&mut self, force: bool, cx: &mut Context<Self>) {
         let s = &self.settings;
+        let chrome = match s.theme_mode {
+            crate::theme::Mode::System => None,
+            crate::theme::Mode::Light => Some(WindowAppearance::Light),
+            crate::theme::Mode::Dark => Some(WindowAppearance::Dark),
+        };
+        cx.set_window_appearance(chrome);
         let changed = crate::theme::apply(s.theme_mode, &s.theme_light, &s.theme_dark, cx.window_appearance());
         if changed || force {
             crate::theme::sync_components(cx);

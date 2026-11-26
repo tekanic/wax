@@ -13,7 +13,7 @@ done
 rustup target add wasm32-wasip2 >/dev/null 2>&1 || true
 dest="${WAX_CONFIG_DIR:-$HOME/.config/wax}/plugins"
 names="$*"
-[ -n "$names" ] || names=$(ls plugins | grep -v '^test-')
+[ -n "$names" ] || names=$(for c in plugins/*/Cargo.toml; do basename "$(dirname "$c")"; done | grep -v '^test-')
 for name in $names; do
   echo "Building $name"
   (cd "plugins/$name" && cargo build --release --target wasm32-wasip2 --quiet)

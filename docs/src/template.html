@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$pagetitle$ · Wax</title>
+<meta name="description" content="$description$">
+<link rel="icon" type="image/png" href="../wax-icon-1024.png">
+<link rel="canonical" href="https://tekanic.github.io/wax/$slug$/">
+<meta property="og:title" content="$pagetitle$ · Wax">
+<meta property="og:description" content="$description$">
+<meta property="og:image" content="https://tekanic.github.io/wax/shots/og.jpg">
+<meta property="og:url" content="https://tekanic.github.io/wax/$slug$/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../site.css">
+$if(highlighting-css)$<style>
+$highlighting-css$
+</style>$endif$
+</head>
+<body class="doc">
+<header class="wrap top">
+  <a class="mark" href="../" aria-label="Wax home"><img src="../wax-icon-1024.png" alt=""><span class="word">wax</span></a>
+  <nav aria-label="Main"><a href="../#tour">Tour</a><a href="../guide/"$if(guide)$ aria-current="page"$endif$>Guide</a><a href="../plugins/"$if(plugins)$ aria-current="page"$endif$>Plugins</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
+</header>
+<div class="wrap docs">
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    $toc$
+  </aside>
+  <main class="prose">
+    <h1>$pagetitle$</h1>
+    <p class="lede">$description$</p>
+$body$
+    <p class="edit"><a href="https://github.com/tekanic/wax/blob/main/$source$">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>Wax is made by Tekanics LLC. Free and open source under the <a href="https://github.com/tekanic/wax/blob/main/LICENSE">GPL-3.0</a>.</span>
+    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>

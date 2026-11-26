@@ -43,6 +43,7 @@ mod signature;
 mod sweep;
 mod table;
 mod theme;
+mod demo;
 mod window_state;
 mod threads;
 
@@ -568,7 +569,7 @@ impl MailApp {
             }
         }
         // An empty autosave isn't worth reopening.
-        let unsent = app.store.as_ref().and_then(|s| s.lock().unwrap().load_snapshot()).filter(|d| !d.is_blank());
+        let unsent = app.store.as_ref().and_then(|s| s.lock().unwrap().load_snapshot()).filter(|d| !d.is_blank() && !demo::on());
         if let Some(draft) = unsent {
             app.open_composer(draft, window, cx);
             app.status = "Restored the message you were writing".into();
@@ -593,6 +594,9 @@ impl MailApp {
             Ok("addresses") => app.open_settings(settings::Pane::Addresses, window, cx),
             Ok("accounts") => app.open_settings(settings::Pane::Accounts, window, cx),
             _ => {}
+        }
+        if demo::on() {
+            app.demo_stage_later(window, cx);
         }
         let initial = app.search.read(cx).value().trim().to_string();
         if !initial.is_empty() {
@@ -628,6 +632,10 @@ impl MailApp {
 
     fn connect(&mut self, cx: &mut Context<Self>) {
         if self.account.is_empty() {
+            return;
+        }
+        if demo::on() {
+            self.demo_online(cx);
             return;
         }
         let acct = self.account.clone();
@@ -2169,6 +2177,9 @@ impl MailApp {
 
     /// Connect the accounts that aren't on screen (for All Inboxes).
     fn fill_pool(&mut self, cx: &mut Context<Self>) {
+        if demo::on() {
+            return;
+        }
         let wanted: Vec<String> = self
             .accounts
             .iter()
@@ -3782,6 +3793,13 @@ fn main() {
     }
     let acct = crate::accounts::first_email();
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--make-demo") {
+        if let Err(e) = demo::make() {
+            eprintln!("{e:#}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Some(pos) = args.iter().position(|a| a == "--content-sample") {
         let (account, mailbox, n) = (&args[pos + 1], &args[pos + 2], args.get(pos + 3).and_then(|n| n.parse::<u32>().ok()).unwrap_or(50));
         let result = Session::connect(account).and_then(|mut s| {

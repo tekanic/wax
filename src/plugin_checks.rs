@@ -84,6 +84,9 @@ impl MailApp {
 
     pub fn check_opened(&mut self, e: Envelope, cx: &mut Context<Self>) {
         self.load_warnings(&e);
+        if crate::demo::on() {
+            return;
+        }
         let (Some(host), Some(store)) = (self.wasm.clone(), self.store.clone()) else { return };
         let account = self.account_of(&e).to_string();
         let key = message_key(&e);
@@ -275,6 +278,9 @@ impl MailApp {
     }
 
     pub fn scan_if_needed(&mut self, cx: &mut Context<Self>) {
+        if crate::demo::on() {
+            return;
+        }
         let Some(host) = self.wasm.clone() else { return };
         let due: Vec<String> = host
             .lock()

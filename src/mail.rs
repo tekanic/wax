@@ -163,6 +163,9 @@ impl Session {
     }
 
     pub fn connect(account: &str) -> Result<Self> {
+        if crate::demo::on() {
+            anyhow::bail!("demo mode stays offline");
+        }
         let slot = Slot::take(account)?;
         let client = login(account)?;
         Ok(Self { client, _slot: slot, account: account.to_lowercase() })

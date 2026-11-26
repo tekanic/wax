@@ -24,8 +24,9 @@ empty folder to a working plugin, then covers the whole interface.
   plugin describes what to show (for example a sender view's keys and rows).
 - **Every call is sandboxed.** Each call gets a fresh instance with no files,
   no network, no environment variables, at most 64 MB of memory and a fuel
-  budget of about 500 million instructions. A plugin that traps, loops or runs
-  out of memory is switched off until Wax restarts, and Wax says why.
+  budget of about 500 million instructions. A call that runs out of time is
+  skipped; a plugin that does it five times in a row, traps or runs out of
+  memory is switched off until Wax restarts, and Wax says why.
 - **Nothing runs until you say so.** A new plugin shows up in Settings →
   Plugins switched off. Switching it on grants the permissions it asked for.
 

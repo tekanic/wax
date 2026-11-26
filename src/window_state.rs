@@ -55,8 +55,43 @@ pub fn visible_on(b: &WindowBounds, displays: &[Bounds<Pixels>]) -> bool {
     })
 }
 
+#[cfg(target_os = "macos")]
+fn screens() -> Option<Vec<Bounds<Pixels>>> {
+    #[repr(C)]
+    struct CGRect {
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    }
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGGetActiveDisplayList(max: u32, displays: *mut u32, count: *mut u32) -> i32;
+        fn CGDisplayBounds(display: u32) -> CGRect;
+    }
+    let mut ids = [0u32; 16];
+    let mut count = 0u32;
+    if unsafe { CGGetActiveDisplayList(ids.len() as u32, ids.as_mut_ptr(), &mut count) } != 0 || count == 0 {
+        return None;
+    }
+    Some(
+        ids[..count as usize]
+            .iter()
+            .map(|&id| {
+                let r = unsafe { CGDisplayBounds(id) };
+                Bounds::new(point(px(r.x as f32), px(r.y as f32)), size(px(r.w as f32), px(r.h as f32)))
+            })
+            .collect(),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn screens() -> Option<Vec<Bounds<Pixels>>> {
+    None
+}
+
 pub fn restore(cx: &App) -> WindowBounds {
-    let displays: Vec<Bounds<Pixels>> = cx.displays().iter().map(|d| d.bounds()).collect();
+    let displays = screens().unwrap_or_else(|| cx.displays().iter().map(|d| d.bounds()).collect());
     std::fs::read_to_string(file())
         .ok()
         .and_then(|t| decode(&t))

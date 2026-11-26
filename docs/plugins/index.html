@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing a plugin · Wax</title>
+<meta name="description" content="Wax plugins are sandboxed WebAssembly
+components. This guide goes from an empty folder to a working plugin,
+then covers the whole interface.">
+<link rel="icon" type="image/png" href="../wax-icon-1024.png">
+<link rel="canonical" href="https://tekanic.github.io/wax/plugins/">
+<meta property="og:title" content="Writing a plugin · Wax">
+<meta property="og:description" content="Wax plugins are sandboxed
+WebAssembly components. This guide goes from an empty folder to a
+working plugin, then covers the whole interface.">
+<meta property="og:image" content="https://tekanic.github.io/wax/shots/og.jpg">
+<meta property="og:url" content="https://tekanic.github.io/wax/plugins/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../site.css">
+<style>
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    background-color: #232629;
+    color: #7a7c7d;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #7a7c7d;  padding-left: 4px; }
+div.sourceCode
+  { color: #cfcfc2; background-color: #232629; }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span { color: #cfcfc2; } /* Normal */
+code span.al { color: #95da4c; background-color: #4d1f24; font-weight: bold; } /* Alert */
+code span.an { color: #3f8058; } /* Annotation */
+code span.at { color: #2980b9; } /* Attribute */
+code span.bn { color: #f67400; } /* BaseN */
+code span.bu { color: #7f8c8d; } /* BuiltIn */
+code span.cf { color: #fdbc4b; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #3daee9; } /* Char */
+code span.cn { color: #27aeae; font-weight: bold; } /* Constant */
+code span.co { color: #7a7c7d; } /* Comment */
+code span.cv { color: #7f8c8d; } /* CommentVar */
+code span.do { color: #a43340; } /* Documentation */
+code span.dt { color: #2980b9; } /* DataType */
+code span.dv { color: #f67400; } /* DecVal */
+code span.er { color: #da4453; text-decoration: underline; } /* Error */
+code span.ex { color: #0099ff; font-weight: bold; } /* Extension */
+code span.fl { color: #f67400; } /* Float */
+code span.fu { color: #8e44ad; } /* Function */
+code span.im { color: #27ae60; } /* Import */
+code span.in { color: #c45b00; } /* Information */
+code span.kw { color: #cfcfc2; font-weight: bold; } /* Keyword */
+code span.op { color: #cfcfc2; } /* Operator */
+code span.ot { color: #27ae60; } /* Other */
+code span.pp { color: #27ae60; } /* Preprocessor */
+code span.re { color: #2980b9; background-color: #153042; } /* RegionMarker */
+code span.sc { color: #3daee9; } /* SpecialChar */
+code span.ss { color: #da4453; } /* SpecialString */
+code span.st { color: #f44f4f; } /* String */
+code span.va { color: #27aeae; } /* Variable */
+code span.vs { color: #da4453; } /* VerbatimString */
+code span.wa { color: #da4453; } /* Warning */
+</style>
+</head>
+<body class="doc">
+<header class="wrap top">
+  <a class="mark" href="../" aria-label="Wax home"><img src="../wax-icon-1024.png" alt=""><span class="word">wax</span></a>
+  <nav aria-label="Main"><a href="../#tour">Tour</a><a href="../guide/">Guide</a><a href="../plugins/" aria-current="page">Plugins</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
+</header>
+<div class="wrap docs">
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <ul>
+    <li><a href="#how-plugins-work" id="toc-how-plugins-work">How
+    plugins work</a></li>
+    <li><a href="#quick-start" id="toc-quick-start">Quick start</a></li>
+    <li><a href="#on-disk" id="toc-on-disk">On disk</a></li>
+    <li><a href="#life-of-a-call" id="toc-life-of-a-call">Life of a
+    call</a></li>
+    <li><a href="#permissions" id="toc-permissions">Permissions</a></li>
+    <li><a href="#actions" id="toc-actions">Actions</a></li>
+    <li><a href="#host-functions" id="toc-host-functions">Host
+    functions</a></li>
+    <li><a href="#commands" id="toc-commands">Commands</a></li>
+    <li><a href="#sender-views" id="toc-sender-views">Sender
+    views</a></li>
+    <li><a href="#testing" id="toc-testing">Testing</a></li>
+    <li><a href="#when-something-goes-wrong"
+    id="toc-when-something-goes-wrong">When something goes
+    wrong</a></li>
+    <li><a href="#versions" id="toc-versions">Versions</a></li>
+    <li><a href="#checklist" id="toc-checklist">Checklist</a></li>
+    </ul>
+  </aside>
+  <main class="prose">
+    <h1>Writing a plugin</h1>
+    <p class="lede">Wax plugins are sandboxed WebAssembly components.
+This guide goes from an empty folder to a working plugin, then covers
+the whole interface.</p>
+<ul>
+<li>Interface: <a
+href="https://github.com/tekanic/wax/blob/main/wit/plugin.wit"><code>wit/plugin.wit</code></a>,
+package <code>wax:plugin@0.5.0</code></li>
+<li>Host: <a
+href="https://github.com/tekanic/wax/blob/main/src/wasm_host.rs"><code>src/wasm_host.rs</code></a></li>
+<li>Examples: <a
+href="https://github.com/tekanic/wax/tree/main/plugins/sweep"><code>plugins/sweep</code></a>
+(a sender view), <a
+href="https://github.com/tekanic/wax/tree/main/plugins/filter-rules"><code>plugins/filter-rules</code></a>
+and <a
+href="https://github.com/tekanic/wax/tree/main/plugins/screener"><code>plugins/screener</code></a>
+(act on new mail), <a
+href="https://github.com/tekanic/wax/tree/main/plugins/snooze"><code>plugins/snooze</code></a>
+(commands with a menu of choices), <a
+href="https://github.com/tekanic/wax/tree/main/plugins/phishing"><code>plugins/phishing</code></a>
+(scores new mail using <code>knows-sender</code>, <code>senders</code>
+and <code>read-message</code>)</li>
+</ul>
+<h2 id="how-plugins-work">How plugins work</h2>
+<ul>
+<li><strong>A plugin is a component.</strong> It's built for
+<code>wasm32-wasip2</code> and implements the <code>plugin</code> world
+in <code>wit/plugin.wit</code>. Rust with <code>wit-bindgen</code> is
+the tested path. Any language that produces WASI 0.2 components should
+work but hasn't been tried.</li>
+<li><strong>Plugins ask; the core acts.</strong> A plugin never changes
+mail itself. It returns <code>action</code>s (add a label, archive, file
+a sender…). Wax checks each one against what you allowed, then carries
+it out.</li>
+<li><strong>Plugins never draw.</strong> Wax draws everything with its
+own components. A plugin describes what to show (for example a sender
+view's keys and rows).</li>
+<li><strong>Every call is sandboxed.</strong> Each call gets a fresh
+instance with no files, no network, no environment variables, at most 64
+MB of memory and a fuel budget of about 500 million instructions. A call
+that runs out of time is skipped; a plugin that does it five times in a
+row, traps or runs out of memory is switched off until Wax restarts, and
+Wax says why.</li>
+<li><strong>Nothing runs until you say so.</strong> A new plugin shows
+up in Settings → Plugins switched off. Switching it on grants the
+permissions it asked for.</li>
+</ul>
+<h2 id="quick-start">Quick start</h2>
+<p>This plugin stars any new mail whose subject mentions "urgent".</p>
+<p><strong>1. Make the crate.</strong> Put it in <code>plugins/</code>
+so it can find the interface:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> plugins/urgent/src</span></code></pre></div>
+<p><code>plugins/urgent/Cargo.toml</code>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode toml"><code class="sourceCode toml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[package]</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span> <span class="op">=</span> <span class="st">&quot;wax-urgent&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">version</span> <span class="op">=</span> <span class="st">&quot;0.1.0&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="dt">edition</span> <span class="op">=</span> <span class="st">&quot;2021&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="dt">publish</span> <span class="op">=</span> <span class="cn">false</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">[lib]</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="dt">crate-type</span> <span class="op">=</span> <span class="op">[</span><span class="st">&quot;cdylib&quot;</span><span class="op">]</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="dt">wit-bindgen</span> <span class="op">=</span> <span class="st">&quot;0.63&quot;</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="kw">[profile.release]</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="dt">opt-level</span> <span class="op">=</span> <span class="st">&quot;s&quot;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="dt">lto</span> <span class="op">=</span> <span class="cn">true</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="dt">strip</span> <span class="op">=</span> <span class="cn">true</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Built on its own, not as part of the app.</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace]</span></span></code></pre></div>
+<p><strong>2. Implement the world.</strong>
+<code>plugins/urgent/src/lib.rs</code>:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="pp">wit_bindgen::generate!</span>(<span class="op">{</span> world<span class="op">:</span> <span class="st">&quot;plugin&quot;</span><span class="op">,</span> path<span class="op">:</span> <span class="st">&quot;../../wit/plugin.wit&quot;</span> <span class="op">}</span>)<span class="op">;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">use</span> <span class="pp">wax::plugin::types::</span>Permission<span class="op">;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> Urgent<span class="op">;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="kw">impl</span> Guest <span class="cf">for</span> Urgent <span class="op">{</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> manifest() <span class="op">-&gt;</span> Manifest <span class="op">{</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        Manifest <span class="op">{</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>            id<span class="op">:</span> <span class="st">&quot;urgent&quot;</span><span class="op">.</span>into()<span class="op">,</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span> <span class="st">&quot;Urgent&quot;</span><span class="op">.</span>into()<span class="op">,</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>            version<span class="op">:</span> <span class="pp">env!</span>(<span class="st">&quot;CARGO_PKG_VERSION&quot;</span>)<span class="op">.</span>into()<span class="op">,</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>            permissions<span class="op">:</span> <span class="pp">vec!</span>[<span class="pp">Permission::</span>ReadEnvelopes<span class="op">,</span> <span class="pp">Permission::</span>ModifyMail]<span class="op">,</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>            network_hosts<span class="op">:</span> <span class="pp">vec!</span>[]<span class="op">,</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>            scan_existing<span class="op">:</span> <span class="cn">false</span><span class="op">,</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> on_message_received(message<span class="op">:</span> Envelope<span class="op">,</span> reason<span class="op">:</span> CheckReason) <span class="op">-&gt;</span> <span class="dt">Vec</span><span class="op">&lt;</span>Action<span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> reason <span class="op">!=</span> <span class="pp">CheckReason::</span>Arrived <span class="op">{</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="pp">vec!</span>[]<span class="op">;</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> message<span class="op">.</span>subject<span class="op">.</span>to_lowercase()<span class="op">.</span>contains(<span class="st">&quot;urgent&quot;</span>) <span class="op">{</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>            <span class="pp">vec!</span>[<span class="pp">Action::</span>Star(<span class="cn">true</span>)]</span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>            <span class="pp">vec!</span>[]</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>    <span class="co">// The rest of the world. Return &quot;nothing&quot; for the parts you don&#39;t use.</span></span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> commands() <span class="op">-&gt;</span> <span class="dt">Vec</span><span class="op">&lt;</span>Command<span class="op">&gt;</span> <span class="op">{</span> <span class="pp">vec!</span>[] <span class="op">}</span></span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> run_command(_id<span class="op">:</span> <span class="dt">String</span><span class="op">,</span> _choice<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span><span class="dt">String</span><span class="op">&gt;,</span> _message<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span>Envelope<span class="op">&gt;</span>) <span class="op">-&gt;</span> <span class="dt">Result</span><span class="op">&lt;</span><span class="dt">Vec</span><span class="op">&lt;</span>Action<span class="op">&gt;,</span> <span class="dt">String</span><span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>        <span class="cn">Err</span>(<span class="st">&quot;no commands&quot;</span><span class="op">.</span>into())</span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> panel() <span class="op">-&gt;</span> <span class="dt">Option</span><span class="op">&lt;</span>Panel<span class="op">&gt;</span> <span class="op">{</span> <span class="cn">None</span> <span class="op">}</span></span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> get_sender_view(_account<span class="op">:</span> <span class="dt">String</span>) <span class="op">-&gt;</span> <span class="dt">Option</span><span class="op">&lt;</span>SenderView<span class="op">&gt;</span> <span class="op">{</span> <span class="cn">None</span> <span class="op">}</span></span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> on_sender_key(_account<span class="op">:</span> <span class="dt">String</span><span class="op">,</span> _who<span class="op">:</span> Sender<span class="op">,</span> _key<span class="op">:</span> <span class="dt">String</span>) <span class="op">-&gt;</span> <span class="dt">Result</span><span class="op">&lt;</span><span class="dt">Vec</span><span class="op">&lt;</span>Action<span class="op">&gt;,</span> <span class="dt">String</span><span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a>        <span class="cn">Ok</span>(<span class="pp">vec!</span>[])</span>
+<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a><span class="pp">export!</span>(Urgent)<span class="op">;</span></span></code></pre></div>
+<p><strong>3. Build and install.</strong></p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/build-plugins.sh</span> urgent</span></code></pre></div>
+<p>This builds <code>plugins/urgent</code> for
+<code>wasm32-wasip2</code> and copies it to
+<code>~/.config/wax/plugins/urgent/plugin.wasm</code>. If the crate has
+a <code>config.example.toml</code>, the script also copies it to
+<code>config.toml</code> the first time.</p>
+<p><strong>4. Switch it on.</strong> Within two seconds, Wax notices the
+new folder. Open Settings → Plugins, check what it asks for and choose
+<strong>On</strong>.</p>
+<h2 id="on-disk">On disk</h2>
+<pre><code>~/.config/wax/plugins/&lt;id&gt;/
+  plugin.wasm    the component
+  grants.toml    on/off and what you allowed (written by Wax and Settings)
+  config.toml    the plugin&#39;s own settings, edited by you
+  storage.toml   the plugin&#39;s key-value store (needs `storage`)</code></pre>
+<p><code>grants.toml</code> looks like this:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode toml"><code class="sourceCode toml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="dt">enabled</span> <span class="op">=</span> <span class="cn">true</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="dt">permissions</span> <span class="op">=</span> <span class="st">&quot;read-envelopes modify-mail&quot;</span></span></code></pre></div>
+<p>Wax reloads the plugins when any <code>plugin.wasm</code> or
+<code>grants.toml</code> changes. A plugin can only be granted
+permissions its manifest asks for.</p>
+<h2 id="life-of-a-call">Life of a call</h2>
+<p>Wax compiles each plugin once at load. Every call
+(<code>manifest</code>, <code>on-message-received</code>,
+<code>get-sender-view</code> and the rest) then runs on a <strong>new
+instance</strong>. Nothing survives between calls: statics and globals
+start fresh each time. Keep settings in <code>config.toml</code> (read
+with <code>config()</code>) and anything you learn in storage
+(<code>storage-get</code> and <code>storage-set</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Export</th>
+<th>When Wax calls it</th>
+<th>Needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>manifest</code></td>
+<td>At load, and whenever the plugins reload</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>on-message-received</code></td>
+<td>Each new Inbox message that sender rules didn't file,
+<strong>before</strong> it's shown or announced; and for checkers,
+existing mail too (see below)</td>
+<td><code>read-envelopes</code></td>
+</tr>
+<tr>
+<td><code>get-sender-view</code></td>
+<td>When you open the Sweep (<code>g w</code>); the first running plugin
+that returns a view wins</td>
+<td><code>read-envelopes</code></td>
+</tr>
+<tr>
+<td><code>on-sender-key</code></td>
+<td>When you press one of your view's keys on a sender row</td>
+<td><code>read-envelopes</code></td>
+</tr>
+<tr>
+<td><code>commands</code></td>
+<td>At load, and each time one of your commands' menus opens (so choices
+can show current times)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>run-command</code></td>
+<td>When you press a command's key in the list, click its reader button,
+or pick from its menu</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>panel</code></td>
+<td>Not called yet; return <code>None</code></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>envelope</code> a plugin gets has the sender, subject, date
+and flags, plus <code>to</code> (To and Cc recipients) and
+<code>labels</code> (Gmail's labels for the message; system ones start
+with a backslash, like <code>\Important</code>). Message text isn't
+included; that will come with <code>read-bodies</code>.</p>
+<p>A message a plugin moves or archives never appears in the Inbox or as
+a notification. The actions themselves then run in the background over
+IMAP, labels and flags first, then the move or archive. Wax waits for
+every plugin before showing new mail, so keep
+<code>on-message-received</code> quick.</p>
+<h3 id="checking-mail-thats-already-there">Checking mail that's already
+there</h3>
+<p><code>on-message-received</code> gets a <code>check-reason</code>
+saying why it's being called:</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>When</th>
+<th>Actions Wax carries out</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>arrived</code></td>
+<td>New mail, before it's shown</td>
+<td>All you're granted</td>
+</tr>
+<tr>
+<td><code>existing</code></td>
+<td>The first sweep of mail already in your folders</td>
+<td><code>add-label</code>, <code>warn</code></td>
+</tr>
+<tr>
+<td><code>opened</code></td>
+<td>A message is opened that this version of the plugin hasn't checked
+(in any folder, Spam included)</td>
+<td><code>add-label</code>, <code>warn</code></td>
+</tr>
+<tr>
+<td><code>not-spam</code></td>
+<td>You move a message out of Spam; labels go on before it moves</td>
+<td><code>add-label</code>, <code>warn</code></td>
+</tr>
+</tbody>
+</table>
+<p>For anything but <code>arrived</code>, Wax quietly drops every other
+action, so an old message is never moved or archived by a plugin.
+Plugins that only sort new mail (filter rules, the Screener) return
+nothing unless the reason is <code>arrived</code>.</p>
+<p>Set <code>scan-existing: true</code> in the manifest to get the
+sweep. When the plugin is switched on, or a new version of it loads, Wax
+checks every cached message outside Spam, Trash and Drafts, once each
+(duplicates across labels count once), with progress in the status bar.
+The plugin can <code>read-message</code> mail from the last 90 days;
+older mail is checked on its envelope alone. Settings → Plugins has
+<strong>Check existing mail</strong> to run it again for anything not
+yet checked. Wax remembers which version checked which message, so
+bumping your version rechecks everything.</p>
+<p><code>warn(text)</code> keeps a warning with the message: it shows as
+an amber ⚠ banner above the message whenever it's opened, in any folder.
+It needs no permission.</p>
+<p><a
+href="https://github.com/tekanic/wax/tree/main/plugins/phishing"><code>plugins/phishing</code></a>
+uses all of this.</p>
+<p><a
+href="https://github.com/tekanic/wax/tree/main/plugins/screener"><code>plugins/screener</code></a>
+is a complete example: it holds mail from strangers in the Lobby using
+<code>knows-sender</code>, and remembers when each account was switched
+on in storage.</p>
+<h2 id="permissions">Permissions</h2>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Lets the plugin</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read-envelopes</code></td>
+<td>Get messages' senders, recipients, subjects, flags; call
+<code>senders</code></td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>modify-mail</code></td>
+<td>Return label, move, archive, read, star and file-sender actions</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>storage</code></td>
+<td>Use <code>storage-get</code> and <code>storage-set</code></td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>read-bodies</code></td>
+<td>Call <code>read-message</code> and <code>message-text</code> for the
+new mail being handled</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>network</code></td>
+<td>Call <code>http-get</code> for hosts in
+<code>network-hosts</code></td>
+<td>Answers "not available yet"</td>
+</tr>
+<tr>
+<td><code>compose</code></td>
+<td>Return <code>open-draft</code></td>
+<td>Not carried out yet</td>
+</tr>
+</tbody>
+</table>
+<p>Ask for the least you need. Settings shows each request in plain
+words, and an action you weren't granted is refused and reported.</p>
+<h2 id="actions">Actions</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Effect</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>add-label(name)</code></td>
+<td>Adds a label, creating it if needed</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>remove-label(name)</code></td>
+<td>Removes a label</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>move-to(name)</code></td>
+<td>Labels it and takes it out of the Inbox</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>archive</code></td>
+<td>Takes it out of the Inbox</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>mark-read(bool)</code></td>
+<td>Read or unread</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>star(bool)</code></td>
+<td>Star or unstar</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>notify(text)</code></td>
+<td>Shows text in the status bar (needs no permission)</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>warn(text)</code></td>
+<td>Keeps a warning shown above the message in the reader (needs no
+permission)</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>file-sender(decision)</code></td>
+<td>Files all of a sender's mail, past and future (sender views
+only)</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>snooze-until(time)</code></td>
+<td>From a command: out of the Inbox under a Snoozed label until the RFC
+3339 time, then back unread</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>follow-up(time)</code></td>
+<td>From a command: at the time, back to the Inbox unless someone else
+wrote in the thread since</td>
+<td>Works</td>
+</tr>
+<tr>
+<td><code>open-draft(draft)</code></td>
+<td>Open a prefilled draft</td>
+<td>Not yet</td>
+</tr>
+</tbody>
+</table>
+<h2 id="host-functions">Host functions</h2>
+<p>All live in <code>wax::plugin::host</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Does</th>
+<th>Needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log(text)</code></td>
+<td>Reports a line in the status bar and in Settings → Problems (at most
+20 per call)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>config()</code></td>
+<td>Your <code>config.toml</code> as text, or <code>""</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>utc-offset()</code></td>
+<td>Seconds east of UTC on this Mac now, for local times</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>senders(account, limit)</code></td>
+<td>Senders by volume from the local cache, with their rule</td>
+<td><code>read-envelopes</code></td>
+</tr>
+<tr>
+<td><code>knows-sender(message)</code></td>
+<td>Whether you know its sender: your own address, a colleague at your
+work domain, someone you've written to, someone with a sender rule, or
+other mail from them (not the Lobby, Spam, Trash or this batch)</td>
+<td><code>read-envelopes</code></td>
+</tr>
+<tr>
+<td><code>storage-get(key)</code>,
+<code>storage-set(key, value)</code></td>
+<td>Your key-value store</td>
+<td><code>storage</code></td>
+</tr>
+<tr>
+<td><code>read-message(account, mailbox, id)</code></td>
+<td>The message's text, links (shown text and URL), headers and
+attachment names; fetched once per message. Only for the messages
+<code>on-message-received</code> is checking (in a sweep, those from the
+last 90 days)</td>
+<td><code>read-bodies</code></td>
+</tr>
+<tr>
+<td><code>message-text(account, mailbox, id)</code></td>
+<td>Just the text, as above</td>
+<td><code>read-bodies</code></td>
+</tr>
+<tr>
+<td><code>http-get(url)</code></td>
+<td>HTTPS GET</td>
+<td>Not yet</td>
+</tr>
+</tbody>
+</table>
+<p><code>config.toml</code> is yours to define; Wax doesn't parse it.
+The built-in plugins use one setting per line with <code>#</code>
+comments. That's a good habit: people edit these files by hand.</p>
+<h2 id="commands">Commands</h2>
+<p>A command acts on the selected message. Wax offers it as a key in the
+message list and, with <code>in-message-toolbar</code>, a button in the
+reader.</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>Command <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    id<span class="op">:</span> <span class="st">&quot;snooze&quot;</span><span class="op">.</span>into()<span class="op">,</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    title<span class="op">:</span> <span class="st">&quot;Snooze&quot;</span><span class="op">.</span>into()<span class="op">,</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    keybinding<span class="op">:</span> <span class="cn">Some</span>(<span class="st">&quot;z&quot;</span><span class="op">.</span>into())<span class="op">,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    in_message_toolbar<span class="op">:</span> <span class="cn">true</span><span class="op">,</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    scope<span class="op">:</span> <span class="pp">CommandScope::</span><span class="bu">Any</span><span class="op">,</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    choices<span class="op">:</span> <span class="pp">vec!</span>[CommandChoice <span class="op">{</span> id<span class="op">:</span> <span class="st">&quot;tomorrow&quot;</span><span class="op">.</span>into()<span class="op">,</span> title<span class="op">:</span> <span class="st">&quot;Tomorrow&quot;</span><span class="op">.</span>into()<span class="op">,</span> detail<span class="op">:</span> <span class="st">&quot;Thu 8 AM&quot;</span><span class="op">.</span>into() <span class="op">}</span>]<span class="op">,</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    text_hint<span class="op">:</span> <span class="cn">Some</span>(<span class="st">&quot;or type a time: fri 9am&quot;</span><span class="op">.</span>into())<span class="op">,</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<ul>
+<li><strong>Keys</strong> are one letter, optionally
+<code>shift-</code>. Pick one Wax doesn't use (<code>z</code> and
+<code>w</code> are the Snooze plugin's). Keys Wax already binds
+win.</li>
+<li><strong>Scope</strong> limits it to messages you sent
+(<code>sent</code>), received (<code>received</code>) or any.</li>
+<li><strong>Choices</strong> and <strong>text-hint</strong>: when either
+is set, running the command opens a menu. Picking a choice calls
+<code>run-command</code> with its id; typing and pressing Enter sends
+<code>"text:&lt;what was typed&gt;"</code>. With neither, it runs
+straight away.</li>
+<li><code>run-command</code> gets the message being read. Its actions
+apply to the whole conversation when you ran it from a list row, or just
+that message when you picked one in the conversation strip.</li>
+</ul>
+<h2 id="sender-views">Sender views</h2>
+<p>A sender view is a keyboard-driven list of senders, like the Sweep.
+The plugin supplies the rows and the keys. Wax draws the list, moves
+with <code>j</code>/<code>k</code> and the arrows, and closes with
+<code>esc</code>. Wax also holds each decision for the undo window
+(<code>⌘Z</code>), then writes the sender rule and moves the mail.</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode rust"><code class="sourceCode rust"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> get_sender_view(account<span class="op">:</span> <span class="dt">String</span>) <span class="op">-&gt;</span> <span class="dt">Option</span><span class="op">&lt;</span>SenderView<span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> rows <span class="op">=</span> <span class="pp">wax::plugin::host::</span>senders(<span class="op">&amp;</span>account<span class="op">,</span> <span class="dv">500</span>)<span class="op">.</span>unwrap_or_default()<span class="op">;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cn">Some</span>(SenderView <span class="op">{</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>        title<span class="op">:</span> <span class="st">&quot;Sweep&quot;</span><span class="op">.</span>into()<span class="op">,</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>        keys<span class="op">:</span> <span class="pp">vec!</span>[ViewKey <span class="op">{</span> key<span class="op">:</span> <span class="st">&quot;r&quot;</span><span class="op">.</span>into()<span class="op">,</span> label<span class="op">:</span> <span class="st">&quot;Reading&quot;</span><span class="op">.</span>into()<span class="op">,</span> about<span class="op">:</span> <span class="st">&quot;newsletters&quot;</span><span class="op">.</span>into()<span class="op">,</span> color<span class="op">:</span> <span class="dv">0x4f8ff7</span> <span class="op">}</span>]<span class="op">,</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        rows<span class="op">,</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> on_sender_key(_account<span class="op">:</span> <span class="dt">String</span><span class="op">,</span> who<span class="op">:</span> Sender<span class="op">,</span> key<span class="op">:</span> <span class="dt">String</span>) <span class="op">-&gt;</span> <span class="dt">Result</span><span class="op">&lt;</span><span class="dt">Vec</span><span class="op">&lt;</span>Action<span class="op">&gt;,</span> <span class="dt">String</span><span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> key <span class="op">!=</span> <span class="st">&quot;r&quot;</span> <span class="op">{</span> <span class="cf">return</span> <span class="cn">Ok</span>(<span class="pp">vec!</span>[])<span class="op">;</span> <span class="op">}</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="cn">Ok</span>(<span class="pp">vec!</span>[<span class="pp">Action::</span>FileSender(SenderDecision <span class="op">{</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>        email<span class="op">:</span> who<span class="op">.</span>email<span class="op">,</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>        name<span class="op">:</span> who<span class="op">.</span>name<span class="op">,</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>        count<span class="op">:</span> who<span class="op">.</span>count<span class="op">,</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>        destination<span class="op">:</span> <span class="cn">Some</span>(<span class="st">&quot;Reading&quot;</span><span class="op">.</span>into())<span class="op">,</span> <span class="co">// None keeps them in the Inbox</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span>)])</span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<ul>
+<li><strong>Keys</strong> are single characters pressed without
+modifiers. <code>j</code>, <code>k</code> and <code>esc</code> are taken
+by the view.</li>
+<li><strong>Rows</strong> come back to you in <code>on-sender-key</code>
+as the <code>who</code> argument, with their current <code>rule</code>
+so you can skip decisions already made.</li>
+<li><strong>Colours:</strong> a row whose rule matches a key's
+<code>label</code> is drawn in that key's colour.</li>
+<li>Only <code>file-sender</code> and <code>notify</code> work from a
+sender view.</li>
+</ul>
+<p>See <a
+href="https://github.com/tekanic/wax/tree/main/plugins/sweep"><code>plugins/sweep</code></a>
+for the full version, which reads its keys from
+<code>config.toml</code>.</p>
+<h2 id="testing">Testing</h2>
+<p><strong>Plain logic</strong> (parsing your config, matching rules)
+can be unit tested with <code>cargo test</code> in the plugin's folder.
+This works as long as the code under test doesn't call host functions.
+<code>plugins/sweep</code> does this.</p>
+<p><strong>The whole plugin</strong> can be tested against the real
+host. Build it, then follow the tests at the bottom of
+<code>src/wasm_host.rs</code>: copy the <code>.wasm</code> into a
+scratch folder with a <code>grants.toml</code>, load it with
+<code>Host::load_from</code>, and call <code>arrived</code>,
+<code>sender_view</code> or <code>sender_key</code>.
+<code>plugins/test-runaway</code> is a plugin that misbehaves on
+purpose: it proves loops and memory grabs are stopped.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/build-plugins.sh</span> sweep <span class="kw">&amp;&amp;</span> <span class="ex">cargo</span> test wasm_host</span></code></pre></div>
+<h2 id="when-something-goes-wrong">When something goes wrong</h2>
+<ul>
+<li><strong>Not in Settings → Plugins?</strong> The folder needs
+<code>plugin.wasm</code> at its top.</li>
+<li><strong>"Not running: …"</strong> under its name: it failed to load,
+or it trapped. The text says which. Fix it and rebuild; Wax reloads
+it.</li>
+<li><strong>"action(s) refused":</strong> it returned an action it
+wasn't granted. Ask for the permission in the manifest, rebuild, then
+switch it off and on to grant it.</li>
+<li><strong>Your <code>log</code> lines</strong> show in the status bar
+and in Settings → Problems.</li>
+<li><strong>"ran out of time on one message and skipped it"</strong>:
+one call used up its fuel. Wax skips that message and carries on; five
+in a row and the plugin is switched off. Cap work that grows with the
+message (links, text length).</li>
+<li><strong>"stopped and was switched off"</strong> means it ran out of
+fuel five times in a row, ran out of memory, or panicked. A Rust panic
+is a trap.</li>
+</ul>
+<h2 id="versions">Versions</h2>
+<p>The interface is versioned (<code>wax:plugin@0.5.0</code>) and still
+changing: a plugin built against one version won't load in a Wax built
+with another. When it changes, rebuild against the new
+<code>wit/plugin.wit</code>.</p>
+<ul>
+<li><strong>v0.5</strong> gave <code>on-message-received</code> a
+<code>check-reason</code> (<code>arrived</code>, <code>existing</code>,
+<code>opened</code>, <code>not-spam</code>), added the <code>warn</code>
+action and the manifest's <code>scan-existing</code>, so a plugin can
+check mail that's already there.</li>
+<li><strong>v0.4</strong> added <code>read-message</code> (text, links,
+headers, attachments) and made <code>message-text</code> work, both
+under <code>read-bodies</code>.</li>
+<li><strong>v0.3</strong> made commands run (keys, reader buttons, menus
+with choices and typed text), added <code>follow-up</code>, carried out
+<code>snooze-until</code>, added <code>utc-offset</code>, and gave
+<code>run-command</code> a <code>choice</code>.</li>
+<li><strong>v0.2</strong> added sender views, <code>senders</code>,
+<code>knows-sender</code> and <code>file-sender</code>, and moved
+<code>on-message-received</code> ahead of showing new mail.</li>
+<li><strong>v0.1</strong> was the first release.</li>
+</ul>
+<h2 id="checklist">Checklist</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>id</code> in the manifest
+matches the folder name</label></li>
+<li><label><input type="checkbox" />Asks only for the permissions it
+uses</label></li>
+<li><label><input type="checkbox" />Every export implemented; unused
+ones return empty values</label></li>
+<li><label><input type="checkbox" />No state kept in statics; settings
+in <code>config.toml</code>, memory in storage</label></li>
+<li><label><input type="checkbox" />A <code>config.example.toml</code>
+with comments if it has settings</label></li>
+<li><label><input type="checkbox" />Builds with
+<code>scripts/build-plugins.sh &lt;name&gt;</code>, and shows up
+switched off</label></li>
+</ul>
+    <p class="edit"><a href="https://github.com/tekanic/wax/blob/main/docs/plugins.md">Edit this page on GitHub</a></p>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>Wax is made by Tekanics LLC. Free and open source under the <a href="https://github.com/tekanic/wax/blob/main/LICENSE">GPL-3.0</a>.</span>
+    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>

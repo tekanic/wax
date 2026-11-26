@@ -33,6 +33,9 @@ impl MailApp {
     /// Watch every account's Inbox. Each account has its own watcher and
     /// connection; it stops when the account is removed.
     pub fn start_watches(&mut self, cx: &mut Context<Self>) {
+        if crate::demo::on() {
+            return;
+        }
         crate::notify::request();
         let emails: Vec<String> = self.accounts.iter().map(|a| a.email.clone()).collect();
         self.watch.retain(|k, _| emails.contains(k));
