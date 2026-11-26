@@ -2,7 +2,7 @@
 
 <img src="assets/brand/wax-icon-1024.png" width="128" alt="Wax app icon: a red wax seal with a w pressed into it">
 
-Mail for the Mac. The rest is plugins.
+Mail, fast. Extend it with plugins.
 
 Wax is a keyboard-first mail app for macOS, written in Rust, drawn on the GPU
 with [GPUI](https://gpui.rs) (Zed's UI framework) and backed by a local SQLite
