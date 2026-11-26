@@ -4,126 +4,68 @@
 
 Mail for the Mac. The rest is plugins.
 
-Wax is a bare-bones, plugin-extensible email client for macOS, built in Rust on
-[GPUI](https://gpui.rs) (Zed's UI framework) via [gpui-kit](https://gpui-kit.com).
+Wax is a small, keyboard-first mail app for macOS, written in Rust on
+[GPUI](https://gpui.rs) (Zed's UI framework). The core reads, writes and files
+your mail; everything else is a sandboxed WebAssembly plugin you choose.
 
-The repository and binary are still called `gpui-mail`; the app shows as Wax.
-Install it with `scripts/install.sh`: a release build, signed with your Apple Development
-certificate if you have one, installed as `~/Applications/Wax.app` and opened. Run it again
-to update. `scripts/bundle.sh debug` makes a debug bundle in `target/debug/Wax.app`.
+**Website:** [tekanic.github.io/wax](https://tekanic.github.io/wax/)
 
-The core only does mail. Everything else (rules, snooze, AI actions,
-integrations) will ship as sandboxed WebAssembly plugins.
+> Early release. Gmail and Google Workspace accounts on Apple silicon Macs.
+> There's no signed download yet: build it from source (below).
 
-## Status: Phase 0 spike
+## Features
 
-- [x] Native window, three panes: mailboxes | thread list | reader
-- [x] Virtualized thread list with 10,000 generated messages
-- [x] Keyboard navigation: `j`/`down`, `k`/`up`, `cmd-q`
-- [x] Read-only IMAP via Pimalaya io-email, verified against Gmail (login ~0.3 s)
-- [x] HTML email reduced to readable text with html2text (real rendering still open)
-- [x] Draft plugin interface: `wit/plugin.wit` (validates with `wasm-tools component wit wit/`)
-- [x] Verify against Gmail with `--check`
-- [x] Plugin host prototype (wasmtime) + one sample plugin (Filter rules)
+**Reading**
+- Every header cached on your Mac (SQLite): folders open at once, mail reads
+  offline, and search covers mail you haven't opened, merged with Gmail's own
+  search across All Mail.
+- Conversations: one row per thread, newest first, your replies included;
+  archive, delete, read and labels act on the whole thread. Or one row per
+  message, if you prefer.
+- All Inboxes and All Sent across accounts; search in Sent matches who you
+  wrote to, the subject and the text.
+- HTML mail in a sandboxed WebKit view: no scripts, remote images and tracking
+  pixels blocked until you load them, links open in your browser.
+- New mail checked every 30 seconds, with a Dock badge and notifications.
 
-## Phase 1: read-only client (in progress)
+**Writing**
+- Messages written in Markdown, sent as clean HTML plus the plain-text source;
+  tables pasted from Excel, Numbers or Sheets.
+- Reply, reply all and forward from the keys or the reader, with quotes that
+  read like the message and threading kept.
+- Eight seconds to review and undo every send; drafts autosave locally and save
+  to Gmail.
+- Signatures designed in the app, From addresses per account, Bcc,
+  attachments, address suggestions, and Blocks: reusable Markdown snippets.
 
-- [x] Local cache (SQLite at `~/Library/Application Support/gpui-mail/cache.sqlite`):
-      folders, envelopes, previews and fetched bodies; opens instantly, works offline
-- [x] Refresh: server window upserted into the cache; archived/deleted rows dropped
-- [x] Search box (`cmd-f` or `/`) over all cached mail, de-duplicated across Gmail folders
-      (`cargo run -- --search <terms>` from the shell)
-- [x] Server-side search (Gmail `X-GM-RAW`, all of All Mail), merged with local hits.
-      In Sent (an account's, or All Sent) search stays in sent mail and matches
-      recipients too: who you wrote to, the subject or the text.
-- [x] Conversations: reading a message shows every message in its Gmail thread
-      (X-GM-THRID), your replies included, above it; click one to read it in place.
-      The list shows one row per conversation (the newest message, with the
-      thread's size); archive, delete, read/unread and labels act on the whole
-      thread, star on its newest message. Settings → General → Message list
-      switches back to one row per message (`conversations` in settings.toml).
-      Sent rows show who the message went to.
-- [x] Read state syncs to Gmail (open = read, `u` toggles), rolled back on failure
-- [x] Older mail: scroll loads the next 200 (cache first, then Gmail); background
-      header sync of All Mail (~34k messages in ~75 s, resumable, UIDVALIDITY-aware)
-- [x] HTML email in a native WebKit view (wry): scripts and remote loads blocked by CSP,
-      per-message "Load images", links open in the default browser
-- [x] Images inside messages: `cid:` images embedded in place, attached photos in a
-      gallery under the message (also for plain-text mail); no network access
+**Organizing**
+- Every action has a key, and the bottom bar shows the ones that apply.
+- Archive, delete, star, Important, labels and bulk select, with undo.
+- Sender rules: file a sender's past and future mail in one key, or block them.
 
-## Phase 2: writing (in progress)
+**Your Mac, your way**
+- Any Zed theme, light and dark, following the Mac's appearance.
+- Settings, rules, signatures, keys and themes are plain text in
+  `~/.config/wax`, picked up as you save them.
+- The layout adapts from a 720px window to an ultrawide; Wax remembers where
+  you left it.
 
-- [x] Compose (`c`), reply (`r`), reply all (`a`), forward (`f`) in the reader pane;
-      replies quote the original and keep threading (In-Reply-To / References)
-- [x] Send with `⌘⏎` through smtp.gmail.com (same app password). The message stays
-      on screen read-only for a last review, under a countdown banner (8 lamps going
-      out, pulsing number, then Sending… / Sent once Gmail accepts it) for 8 s: `esc`/`⌘Z` cancels, `⏎` sends now. Failures reopen the message
-- [x] Drafts: autosaved locally while typing (restored after a crash or quit);
-      `⌘S` or Save saves to Gmail's Drafts and keeps writing (saving again replaces
-      it); `esc` saves and closes; `⏎` or Edit on a message in Drafts reopens it;
-      `⇧⌘⌫` discards
-- [x] Address suggestions in To/Cc from people you've written to (Sent folder,
-      ranked first) and frequent senders; `↑↓` choose, `⏎`/`tab` add, `esc` dismiss
-- [x] Markdown: messages are written in Markdown and sent as text/plain (the
-      source) + text/html (GitHub-flavored, inline-styled, line breaks kept, bare
-      URLs linked). Toolbar and shortcuts for bold, italic, strikethrough, links,
-      code, lists and quotes; `⌘⇧P` previews it as it will arrive, and the send
-      countdown shows the rendered message
-- [x] Actions in every folder: star (`s`), Important (`i`), block or allow a sender
-      (`b`), file a sender (`⇧R`/`⇧C`), right-click menu, swipes; `e` means the
-      folder's natural move (archive, restore, not spam)
-- [x] Settings (`⌘,` or the button beside the Sweep): writing font (monospaced by
-      default, switchable per message with `⌘⇧M`), hide the message list while
-      writing, default signatures for new messages and for replies
-- [x] Signatures: several per account, designed in Settings → Signatures (layout,
-      details, colour, logo) with a live preview of how they arrive. Kept apart
-      from the text and switched in one click or with `⌘⇧S`; placed above any
-      quote; the logo is embedded (cid), so it shows without "load images"
-- [x] Tables: `⌘V` turns a copied Excel / Numbers / Sheets range into a table,
-      `tab` / `⇧tab` move between cells and line the columns up (a new row after
-      the last cell), the Table button (`⌥⌘T`) inserts one; number columns
-      right-align
-- [x] Blocks: while writing, the message list's column lists blocks (Markdown
-      files in `~/.config/wax/blocks/`, `{{cursor}}`
-      marks where typing resumes). Drag one into the message or click to add it
-      at the cursor
-- [x] From addresses (identities, as in Thunderbird): Settings → From addresses adds
-      extra addresses with their own signatures; a From picker in the composer; replies
-      come from the address the message was sent to. Gmail needs each one under
-      Settings → Accounts → "Send mail as"
-- [x] New mail on its own: a watcher on its own connection checks the Inbox every
-      30 s (IMAP STATUS), fetches only new headers, runs sender rules, adds the rest
-      to the list (selection kept), sets the Dock badge to the Inbox's unread count
-      and posts a notification; the open folder is re-read every 5 min or when the
-      Inbox shrinks (mail archived elsewhere)
-- [x] Attachments: received files are listed under the sender; click to open,
-      the arrow saves to Downloads, "Save all" for several. Saved files carry the
-      macOS quarantine mark, and programs or scripts are shown in Finder rather
-      than opened. To send: Attach (`⌘⇧A`) or drag files in from Finder;
-      forwards and reopened drafts keep their files; sends over Gmail's 25 MB
-      limit are stopped before they go.
-- [x] Bcc (`⌘⇧B` or "Bcc" beside the Cc line opens it; × or `⌘⇧B` on an empty line closes it, and × clears what was typed): blind recipients get the
-      message through the mail server's envelope only; the sent message never
-      carries a Bcc line. Drafts keep it so they reopen with it.
-- [x] Bulk select (`x`, `⌘A`, `esc` clears), archive (`e`), delete (`⌫`/`#`): rows
-      leave the list at once, Gmail is changed after an 8 s undo window (`⌘Z`);
-      archive = move to All Mail (drops Inbox/label), delete = move to Trash
-- [x] The Sweep (`g w` or the sidebar): senders ranked by volume from the cached
-      headers, with % never opened, latest date and recent subjects. One key files
-      all of a sender's mail, past and future: `r` Reading, `c` Records, `x` Screened
-      Out (Gmail labels; mail leaves the Inbox), `i` keep. 8 s undo window (`⌘Z`).
-      Rules file new Inbox mail from those senders on every refresh.
-- [x] Screener (a plugin, `plugins/screener`; list the accounts to screen in its
-      `config.toml` as `screen = "you@example.com"`): a first email from someone new
-      waits in the **Lobby** label instead of the Inbox. In the Lobby, `e` lets the
-      sender in (their mail goes to the Inbox and they stay there from now on) and
-      `b` screens them out; ⇧R / ⇧C file them in Reading or Records. Known senders
-      come straight through: anyone you've written to, anyone you've had other mail
-      from, colleagues on your work domain, anyone with a sender rule and your own
-      addresses. Only mail that arrives after you add an account is screened, and
-      never mail more than 3 days old.
+## Install
 
-### Plugins
+Wax builds from source on an Apple silicon Mac.
+
+```sh
+git clone https://github.com/tekanic/wax.git && cd wax
+scripts/install.sh
+```
+
+`install.sh` makes a release build, signs it with your Apple Development
+certificate if you have one, builds the plugins, installs `~/Applications/Wax.app`
+and opens it. Run it again to update. You'll need
+[Rust](https://rustup.rs) and a Google OAuth client for sign-in; see
+[Accounts](#accounts).
+
+## Plugins
 
 New mail goes through one path (`src/plugins.rs`). Sender rules, built in
 because the Sweep, the Lobby and block/allow all write them, file mail from
@@ -143,7 +85,7 @@ beyond what was granted are refused. Each plugin reads its own `config.toml`.
 scripts/build-plugins.sh            # build plugins/* and install them
 ```
 
-**Writing one:** [docs/plugins.md](docs/plugins.md).
+**Writing one:** [docs/plugins.md](docs/plugins.md). The interface is MIT licensed, so a plugin can use any license.
 
 **The Sweep** (`plugins/sweep`) is a plugin: it ranks senders and sets the keys
 and where each one files a sender's mail (`r = "Reading"   # newsletters` in its
@@ -342,28 +284,55 @@ Google sign-in needs an OAuth client:
 
 Test a login without the UI: `cargo run -- --check` (first account).
 
-Bodies are fetched with `BODY.PEEK`. The only change written to the server is
-read state: opening a message marks it read; `u` toggles read/unread.
+## Roadmap
 
-## Build and run
+**Getting it into people's hands**
+- [ ] Google verification for Gmail access, so nobody has to bring their own OAuth client
+- [ ] Signed, notarized downloads with automatic updates
+- [ ] Push notifications for new mail
 
-Requires Rust 1.100+ (pinned to `stable` in `rust-toolchain.toml`).
-If Homebrew's Rust shadows rustup's, run with the rustup toolchain explicitly:
+**Plugins**
+- [x] Plugin host: sandboxed WebAssembly with permissions, fuel and memory limits
+- [x] The Sweep, Screener, Snooze & follow-up, Phishing warnings, Filter rules
+- [ ] Spam filter that learns from what you move to Spam or Screened Out
+- [ ] Spelling and grammar while you write
+- [ ] MCP server, so an AI assistant can search and draft with the access you grant
+- [ ] AI summaries and a morning brief, with your own API key, run on your Mac
+- [ ] A place to find and install plugins, including paid ones
+
+**Mail**
+- [ ] Calendar invitations: see and answer them in the message
+- [ ] Contacts
+- [ ] Send later
+- [ ] Other providers: Outlook, iCloud and plain IMAP
+- [ ] VoiceOver and keyboard accessibility review
+
+Ideas and bug reports are welcome in [Issues](https://github.com/tekanic/wax/issues).
+
+## Development
+
+Requires Rust 1.100+ (pinned to `stable` in `rust-toolchain.toml`). If
+Homebrew's Rust shadows rustup's, put rustup's toolchain first:
 
 ```sh
 T=~/.rustup/toolchains/stable-aarch64-apple-darwin/bin
 PATH=$T:$PATH RUSTC=$T/rustc cargo run
 ```
 
-## Layout
+`cargo test` runs the host's tests, including the built plugins;
+`scripts/build-plugins.sh` builds `plugins/*` for `wasm32-wasip2`;
+`scripts/bundle.sh debug` makes a debug bundle in `target/debug/Wax.app`;
+`cargo run -- --check` tests a login without the UI. The repository and binary
+are called `gpui-mail`; the app is Wax.
 
-- `src/main.rs` — app shell, panes, key bindings
-- `src/mail.rs` — IMAP session (io-email), Keychain lookup, `--check`
-- `wit/plugin.wit` — plugin interface (actions, commands, panels, permissions)
-- `src/wasm_host.rs` — sandboxed plugin host (wasmtime); `src/plugins_pane.rs` — Settings → Plugins
-- `plugins/` — plugins, each its own crate built for `wasm32-wasip2` (`test-*` are for the host's tests)
-- `src/model.rs` — placeholder envelope model and fake data (replaced by the
-  SQLite store in Phase 1)
+- `src/main.rs`: app shell, panes, key handling; `src/keys.rs`: the keymap
+- `src/mail.rs`: Gmail over IMAP and SMTP with OAuth; `src/store.rs`: the SQLite cache
+- `src/compose.rs`, `src/compose_view.rs`: writing, Markdown, sending
+- `src/plugins.rs`, `src/plugin_checks.rs`: new mail through rules and plugins, existing-mail checks
+- `src/wasm_host.rs`: the sandboxed plugin host (wasmtime); `wit/plugin.wit`: the plugin interface
+- `src/theme.rs`: Zed theme loading; `src/html_view.rs`: the HTML mail view
+- `plugins/`: the bundled plugins, one crate each (`test-*` are for the host's tests)
+- `docs/`: the website and the plugin guide
 
 ## License
 
