@@ -310,11 +310,11 @@ impl MailApp {
         };
         Some(
             deferred(
-                anchored().position(point(px(SIDEBAR_WIDTH + 12.), px(70.))).child(
+                anchored().position(point(px(self.sidebar_w() + 12.), px(70.))).child(
                     div()
                         .id("label-picker")
                         .key_context("LabelPicker")
-                        .w(px(LIST_WIDTH - 24.))
+                        .w(px(self.list_w() - 24.))
                         .rounded_lg()
                         .bg(pal().popover)
                         .border_1()

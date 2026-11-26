@@ -640,6 +640,7 @@ impl MailApp {
             let on = v.pane == pane;
             div()
                 .id(id)
+                .flex_none()
                 .h(px(30.))
                 .px_3()
                 .flex()
@@ -661,17 +662,28 @@ impl MailApp {
             .gap_2()
             .border_b_1()
             .border_color(pal().border)
-            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).mr_4().child("Settings"))
-            .child(tab("pane-accounts", "Accounts", Pane::Accounts))
-            .child(tab("pane-writing", "General", Pane::Writing))
-            .child(tab("pane-addresses", "From addresses", Pane::Addresses))
-            .child(tab("pane-labels", "Labels", Pane::Labels))
-            .child(tab("pane-plugins", "Plugins", Pane::Plugins))
-            .child(tab("pane-problems", "Problems", Pane::Problems))
-            .child(tab("pane-signatures", "Signatures", Pane::Signatures))
-            .child(div().flex_1())
+            .when(self.width >= 1100., |d| d.child(div().flex_none().text_lg().font_weight(FontWeight::SEMIBOLD).mr_4().child("Settings")))
+            .child(
+                div()
+                    .id("settings-tabs")
+                    .flex()
+                    .flex_1()
+                    .min_w_0()
+                    .items_center()
+                    .gap_2()
+                    .overflow_x_scroll()
+                    .child(tab("pane-accounts", "Accounts", Pane::Accounts))
+                    .child(tab("pane-writing", "General", Pane::Writing))
+                    .child(tab("pane-addresses", "From addresses", Pane::Addresses))
+                    .child(tab("pane-labels", "Labels", Pane::Labels))
+                    .child(tab("pane-plugins", "Plugins", Pane::Plugins))
+                    .child(tab("pane-problems", "Problems", Pane::Problems))
+                    .child(tab("pane-signatures", "Signatures", Pane::Signatures)),
+            )
             .child(
                 action_button("settings-done", "Done  esc", false)
+                    .flex_none()
+                    .ml_2()
                     .on_click(cx.listener(|this, _, w, cx| this.close_settings(w, cx))),
             );
         let body = match v.pane {
@@ -823,7 +835,7 @@ impl MailApp {
         let editing = v.and_then(|v| v.editor.as_ref());
         let current = editing.map(|e| e.id);
         // Left: the list.
-        let mut list = div().w(px(200.)).flex_none().h_full().p_3().flex().flex_col().gap_1().border_r_1().border_color(pal().border);
+        let mut list = div().w(px(if self.width < 1100. { 150. } else { 200. })).flex_none().h_full().p_3().flex().flex_col().gap_1().border_r_1().border_color(pal().border);
         let shown = self.sig_account();
         if self.accounts.len() > 1 {
             let mut pick = div().flex().flex_col().gap_1().pb_2().mb_2().border_b_1().border_color(pal().border);
@@ -1018,7 +1030,7 @@ impl MailApp {
         let section = |title: &'static str| div().pt_3().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(pal().text).child(title);
         let form = div()
             .id("sig-form")
-            .w(px(380.))
+            .w(px(if self.width < 1100. { 320. } else { 380. }))
             .flex_none()
             .h_full()
             .overflow_y_scroll()

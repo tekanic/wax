@@ -248,6 +248,7 @@ impl MailApp {
         div()
             .flex()
             .flex_none()
+            .flex_wrap()
             .items_center()
             .gap_0p5()
             .child(button("fmt-bold", Format::Bold))
@@ -280,7 +281,7 @@ impl MailApp {
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_mono(cx)))
                     .child(if mono { "Monospaced" } else { "Proportional" }),
             )
-            .child(div().text_xs().text_color(pal().muted).mr_2().child("Markdown"))
+            .when(!self.compact(), |d| d.child(div().text_xs().text_color(pal().muted).mr_2().child("Markdown")))
             .child(
                 div()
                     .id("fmt-preview")

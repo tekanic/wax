@@ -292,11 +292,11 @@ impl MailApp {
         let what = if n > 1 { format!("{} · {n} messages", m.command.title) } else { m.command.title.clone() };
         Some(
             deferred(
-                anchored().position(point(px(SIDEBAR_WIDTH + 12.), px(70.))).child(
+                anchored().position(point(px(self.sidebar_w() + 12.), px(70.))).child(
                     div()
                         .id("choice-menu")
                         .key_context("ChoiceMenu")
-                        .w(px(LIST_WIDTH - 24.))
+                        .w(px(self.list_w() - 24.))
                         .rounded_lg()
                         .bg(pal().popover)
                         .border_1()

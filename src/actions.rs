@@ -495,7 +495,7 @@ impl MailApp {
         let Some(m) = &self.row_menu else { return div().into_any_element() };
         // Keep the menu over the list column: the reader's HTML view is a
         // native view that would cover anything drawn over it.
-        let max_x = SIDEBAR_WIDTH + LIST_WIDTH - MENU_WIDTH - 6.;
+        let max_x = self.sidebar_w() + self.list_w() - MENU_WIDTH - 6.;
         let pos = point(px(m.position.x.as_f32().min(max_x)), m.position.y);
         let menu = div()
             .id("row-menu")

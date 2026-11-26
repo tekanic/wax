@@ -482,8 +482,19 @@ impl MailApp {
         kept
     }
 
+    fn sweep_side_w(&self) -> f32 {
+        if self.width >= 1100. { 320. } else { 240. }
+    }
+
+    fn sweep_cols(&self) -> (f32, f32, f32, bool) {
+        let table = self.width - self.sidebar_w() - self.sweep_side_w();
+        let tight = table < 560.;
+        (96., if tight { 52. } else { 72. }, if tight { 60. } else { 80. }, table >= 620.)
+    }
+
     pub fn render_sweep(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(sw) = &self.sweep else { return div() };
+        let (w_decision, w_count, w_unopened, latest) = self.sweep_cols();
         let total: u64 = sw.rows.iter().map(|r| r.count).sum();
         let decided = sw.rows.iter().filter(|r| r.rule.is_some()).count();
         let header = div()
@@ -496,8 +507,9 @@ impl MailApp {
             .flex()
             .items_baseline()
             .justify_between()
-            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(sw.title.clone()))
-            .child(div().text_xs().text_color(pal().muted).child(if sw.loading {
+            .gap_3()
+            .child(div().flex_none().text_lg().font_weight(FontWeight::SEMIBOLD).child(sw.title.clone()))
+            .child(div().min_w_0().truncate().text_xs().text_color(pal().muted).child(if sw.loading {
                 "Ranking senders…".to_string()
             } else {
                 format!("{} senders · {} messages · {decided} decided", sw.rows.len(), total)
@@ -513,11 +525,11 @@ impl MailApp {
             .text_color(pal().muted)
             .border_b_1()
             .border_color(pal().border)
-            .child(div().w(px(96.)).flex_none().child("DECISION"))
-            .child(div().flex_1().min_w_0().child("SENDER"))
-            .child(div().w(px(72.)).flex_none().text_right().child("MESSAGES"))
-            .child(div().w(px(80.)).flex_none().text_right().child("UNOPENED"))
-            .child(div().w(px(72.)).flex_none().text_right().child("LATEST"));
+            .child(div().w(px(w_decision)).flex_none().child("DECISION"))
+            .child(div().flex_1().min_w(px(120.)).truncate().child("SENDER"))
+            .child(div().w(px(w_count)).flex_none().text_right().child(if w_count < 72. { "MAIL" } else { "MESSAGES" }))
+            .child(div().w(px(w_unopened)).flex_none().text_right().child(if w_unopened < 80. { "UNREAD" } else { "UNOPENED" }))
+            .when(latest, |d| d.child(div().w(px(72.)).flex_none().text_right().child("LATEST")));
         let count = sw.rows.len();
         let list = uniform_list(
             "sweep-rows",
@@ -559,6 +571,7 @@ impl MailApp {
 
     fn render_sweep_rows(&mut self, range: Range<usize>, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
         let Some(sw) = &self.sweep else { return Vec::new() };
+        let (w_decision, w_count, w_unopened, latest) = self.sweep_cols();
         range
             .filter_map(|ix| sw.rows.get(ix).map(|r| (ix, r.clone())))
             .map(|(ix, r)| {
@@ -567,6 +580,7 @@ impl MailApp {
                 let pct = if r.count == 0 { 0 } else { r.unread * 100 / r.count };
                 let badge = match &r.rule {
                     Some(dest) => div()
+                        .whitespace_nowrap()
                         .px_2()
                         .rounded_sm()
                         .text_xs()
@@ -596,35 +610,37 @@ impl MailApp {
                         this.load_sweep_preview(cx);
                         cx.notify();
                     }))
-                    .child(div().w(px(96.)).flex_none().child(badge))
+                    .child(div().w(px(w_decision)).flex_none().child(badge))
                     .child(
                         div()
                             .flex_1()
-                            .min_w_0()
+                            .min_w(px(120.))
                             .flex()
                             .flex_col()
                             .child(div().truncate().text_sm().text_color(pal().text).child(display_name(&r.name, &r.email)))
                             .child(div().truncate().text_xs().text_color(pal().muted).child(r.email.clone())),
                     )
-                    .child(div().w(px(72.)).flex_none().text_right().text_sm().child(r.count.to_string()))
+                    .child(div().w(px(w_count)).flex_none().text_right().text_sm().child(r.count.to_string()))
                     .child(
                         div()
-                            .w(px(80.))
+                            .w(px(w_unopened))
                             .flex_none()
                             .text_right()
                             .text_sm()
                             .text_color(if pct >= 80 { pal().error } else if pct >= 40 { pal().warning } else { pal().subtle })
                             .child(format!("{pct}%")),
                     )
-                    .child(
-                        div()
-                            .w(px(72.))
-                            .flex_none()
-                            .text_right()
-                            .text_xs()
-                            .text_color(pal().muted)
-                            .child(model::display_date(r.last_ts)),
-                    )
+                    .when(latest, |d| {
+                        d.child(
+                            div()
+                                .w(px(72.))
+                                .flex_none()
+                                .text_right()
+                                .text_xs()
+                                .text_color(pal().muted)
+                                .child(model::display_date(r.last_ts)),
+                        )
+                    })
             })
             .collect()
     }
@@ -633,7 +649,7 @@ impl MailApp {
         let Some(sw) = &self.sweep else { return div() };
         let row = sw.rows.get(sw.selected);
         div()
-            .w(px(320.))
+            .w(px(self.sweep_side_w()))
             .flex_none()
             .h_full()
             .p_5()

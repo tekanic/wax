@@ -631,6 +631,7 @@ impl MailApp {
                     .child("Add an account…"),
             );
         }
+        let compact = self.compact();
         if self.accounts.len() > 1 {
             let on = self.unified && self.unified_box == mail::INBOX && self.sweep.is_none();
             let unseen: u64 = self.watch.values().map(|w| w.unseen).sum();
@@ -655,9 +656,13 @@ impl MailApp {
                         this.close_sweep(w, cx);
                         this.open_unified(mail::INBOX, cx)
                     }))
+                    .when(compact, |d| d.justify_center().px_0().relative().tooltip(move |window, cx| Tooltip::new(format!("All Inboxes · {unseen} new")).build(window, cx)))
                     .child(svg().path("icons/inbox.svg").size(px(16.)).flex_none().text_color(pal().accent))
-                    .child(div().flex_1().child("All Inboxes"))
-                    .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(pal().accent).child(unseen.to_string()))),
+                    .when(!compact, |d| {
+                        d.child(div().flex_1().child("All Inboxes"))
+                            .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(pal().accent).child(unseen.to_string())))
+                    })
+                    .when(compact && unseen > 0, |d| d.child(crate::unread_dot())),
             );
             let on = self.unified && self.unified_box == mail::SENT && self.sweep.is_none();
             b = b.child(
@@ -681,8 +686,9 @@ impl MailApp {
                         this.close_sweep(w, cx);
                         this.open_unified(mail::SENT, cx)
                     }))
+                    .when(compact, |d| d.justify_center().px_0().tooltip(|window, cx| Tooltip::new("All Sent").build(window, cx)))
                     .child(svg().path("icons/send.svg").size(px(16.)).flex_none().text_color(pal().accent))
-                    .child(div().flex_1().child("All Sent")),
+                    .when(!compact, |d| d.child(div().flex_1().child("All Sent"))),
             );
         }
         for a in &self.accounts {
@@ -699,6 +705,7 @@ impl MailApp {
         let email = a.email.clone();
         let initial = a.initial();
         let color = a.color();
+        let compact = self.compact();
         div()
             .id(SharedString::from(format!("side-acct-{}", a.email)))
             .flex()
@@ -713,9 +720,10 @@ impl MailApp {
             .when(on, |d| d.bg(pal().selected))
             .when(!on, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
             .tooltip({
-                let email = a.email.clone();
-                move |window, cx| Tooltip::new(email.clone()).build(window, cx)
+                let tip = if unseen > 0 { format!("{} · {unseen} new", a.email) } else { a.email.clone() };
+                move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
             })
+            .when(compact, |d| d.justify_center().px_0().relative())
             .on_click(cx.listener(move |this, _, w, cx| {
                 if !this.query.is_empty() {
                     this.search.update(cx, |s, cx| s.set_value("", w, cx));
@@ -724,8 +732,11 @@ impl MailApp {
                 this.open_account(&email, cx)
             }))
             .child(account_badge(&initial, color, 18.))
-            .child(div().flex_1().min_w_0().truncate().when(here, |d| d.font_weight(FontWeight::MEDIUM)).child(a.short()))
-            .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(pal().muted).child(unseen.to_string())))
+            .when(!compact, |d| {
+                d.child(div().flex_1().min_w_0().truncate().when(here, |d| d.font_weight(FontWeight::MEDIUM)).child(a.short()))
+                    .when(unseen > 0, |d| d.child(div().flex_none().text_xs().text_color(pal().muted).child(unseen.to_string())))
+            })
+            .when(compact && unseen > 0, |d| d.child(crate::unread_dot()))
     }
 }
 

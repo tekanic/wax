@@ -74,7 +74,11 @@ const ALL_MAIL: &str = mail::ALL_MAIL;
 const SENT: &str = mail::SENT;
 const ROW_HEIGHT: f32 = 78.;
 const SIDEBAR_WIDTH: f32 = 210.;
+const SIDEBAR_COMPACT: f32 = 56.;
 const LIST_WIDTH: f32 = 360.;
+const COMPACT_BELOW: f32 = 1000.;
+const WIDE_FROM: f32 = 1500.;
+const READER_MAX: f32 = 1200.;
 
 // Palette (spike only; Phase 1 moves to the gpui-component theme).
 
@@ -120,6 +124,10 @@ fn hint_chip(keys: impl Into<SharedString>, label: impl Into<SharedString>) -> i
                 .child(keys),
         )
         .child(div().text_color(pal().subtle).child(label))
+}
+
+fn unread_dot() -> Div {
+    div().absolute().top(px(6.)).right(px(8.)).size(px(6.)).rounded_full().bg(pal().accent)
 }
 
 fn store_upsert(store: &Store, account: &str, list: &[Envelope]) -> anyhow::Result<()> {
@@ -343,6 +351,7 @@ struct MailApp {
     images_allowed: HashSet<(String, String)>,
     /// Show shortcut hints in the bottom bar (cmd-/ toggles).
     show_hints: bool,
+    width: f32,
     /// The message being written, shown in place of the reader.
     composer: Option<ComposerState>,
     compose_subs: Vec<Subscription>,
@@ -469,6 +478,7 @@ impl MailApp {
             html_view: HtmlView::new(),
             images_allowed: HashSet::new(),
             show_hints: true,
+            width: 1280.,
             composer: None,
             compose_subs: Vec::new(),
             autosave_gen: 0,
@@ -1640,13 +1650,15 @@ impl MailApp {
                     .flex_none()
                     .items_center()
                     .justify_between()
-                    .child(div().text_xl().font_weight(FontWeight::SEMIBOLD).child(c.kind.title()))
+                    .gap_4()
+                    .child(div().flex_1().min_w_0().truncate().text_xl().font_weight(FontWeight::SEMIBOLD).child(c.kind.title()))
                     .child(
                         div()
                             .flex()
+                            .flex_none()
                             .gap_2()
                             .child(
-                                action_button("attach", "Attach  ⌘⇧A", false)
+                                action_button("attach", if self.compact() { "Attach" } else { "Attach  ⌘⇧A" }, false)
                                     .on_click(cx.listener(|this, _, _, cx| this.pick_attachments(cx))),
                             )
                             .child(
@@ -1654,11 +1666,11 @@ impl MailApp {
                                     .on_click(cx.listener(|this, _, w, cx| this.discard_compose(&DiscardCompose, w, cx))),
                             )
                             .child(
-                                action_button("save-draft", if self.saving_draft { "Saving…" } else { "Save  ⌘S" }, false)
+                                action_button("save-draft", if self.saving_draft { "Saving…" } else if self.compact() { "Save" } else { "Save  ⌘S" }, false)
                                     .on_click(cx.listener(|this, _, w, cx| this.save_draft(&SaveDraft, w, cx))),
                             )
                             .child(
-                                action_button("send", "Send  ⌘⏎", true)
+                                action_button("send", if self.compact() { "Send" } else { "Send  ⌘⏎" }, true)
                                     .on_click(cx.listener(|this, _, w, cx| this.send_message(&SendMessage, w, cx))),
                             ),
                     ),
@@ -2663,6 +2675,13 @@ impl MailApp {
             row
         });
         let text = if active { pal().text } else if quiet || !item.exists { pal().muted } else { pal().subtle };
+        let compact = self.compact();
+        let tip = match self.label_counts.get(item.name.as_ref()) {
+            Some(&(total, unseen)) if unseen > 0 => format!("{} · {} unread of {}", item.label, group_digits(unseen), group_digits(total)),
+            Some(&(total, _)) => format!("{} · {}", item.label, group_digits(total)),
+            None => item.label.to_string(),
+        };
+        let has_unread = self.label_counts.get(item.name.as_ref()).is_some_and(|c| c.1 > 0) || (active && unread > 0);
         div()
             .id(("mailbox", ix))
             .flex()
@@ -2671,6 +2690,7 @@ impl MailApp {
             .gap(px(10.))
             .h(px(30.))
             .px(px(10.))
+            .when(compact, |d| d.justify_center().px_0().relative().tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx)))
             .rounded(px(6.))
             .text_color(text)
             .when(active, |d| d.bg(pal().selected).font_weight(FontWeight::MEDIUM))
@@ -2690,8 +2710,26 @@ impl MailApp {
                     .text_color(if active { tint.map(rgb).unwrap_or(pal().accent) } else { tint.map(rgb).unwrap_or(pal().muted) })
                     .when(!item.exists, |d| d.opacity(0.5)),
             )
-            .child(div().flex_1().min_w_0().truncate().child(item.label.clone()))
-            .children(count)
+            .when(!compact, |d| d.child(div().flex_1().min_w_0().truncate().child(item.label.clone())).children(count))
+            .when(compact && has_unread && !quiet, |d| d.child(unread_dot()))
+    }
+
+    pub fn compact(&self) -> bool {
+        self.width < COMPACT_BELOW
+    }
+
+    pub fn sidebar_w(&self) -> f32 {
+        if self.compact() { SIDEBAR_COMPACT } else { SIDEBAR_WIDTH }
+    }
+
+    pub fn list_w(&self) -> f32 {
+        if self.width < COMPACT_BELOW {
+            300.
+        } else if self.width < WIDE_FROM {
+            LIST_WIDTH
+        } else {
+            400.
+        }
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -2730,7 +2768,7 @@ impl MailApp {
             if group > 0 {
                 folders = folders.child(div().h(px(14.)).flex_none());
             }
-            if group == 3 {
+            if group == 3 && !self.compact() {
                 folders = folders.child(
                     div()
                         .flex_none()
@@ -2747,7 +2785,7 @@ impl MailApp {
         }
         // The account on screen's folders scroll; the accounts above don't,
         // so a short window still shows every account.
-        if let Some(a) = self.current_account() {
+        if let Some(a) = self.current_account().filter(|_| !self.compact()) {
             list = list.child(
                 div()
                     .flex_none()
@@ -2758,6 +2796,8 @@ impl MailApp {
                     .truncate()
                     .child(format!("Folders · {}", a.short())),
             );
+            list = list.child(folders);
+        } else if self.compact() {
             list = list.child(folders);
         }
         let accounts_box = self.render_accounts_box(cx);
@@ -2779,11 +2819,13 @@ impl MailApp {
             .when(sweeping, |d| d.bg(pal().selected))
             .when(!sweeping, |d| d.hover(|d| d.bg(pal().hover).text_color(pal().text)))
             .on_click(cx.listener(|this, _, w, cx| this.open_sweep(w, cx)))
+            .when(self.compact(), |d| d.justify_center().px_0().w_full().tooltip(|window, cx| Tooltip::new("Sweep  g w").build(window, cx)))
             .child(svg().path("icons/wand-sparkles.svg").size(px(16.)).flex_none().text_color(pal().accent))
-            .child(div().flex_1().child("Sweep"))
-            .child(div().flex_none().text_xs().font_family("Menlo").text_color(pal().muted).child("g w"));
+            .when(!self.compact(), |d| {
+                d.child(div().flex_1().child("Sweep")).child(div().flex_none().text_xs().font_family("Menlo").text_color(pal().muted).child("g w"))
+            });
         div()
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(self.sidebar_w()))
             .flex_none()
             .h_full()
             .flex()
@@ -2802,6 +2844,7 @@ impl MailApp {
                     .gap_1p5()
                     .mx(px(8.))
                     .mb(px(10.))
+                    .when(self.compact(), |d| d.flex_col().items_center())
                     .child(sweep_row)
                     .child(
                         div()
@@ -2876,6 +2919,15 @@ impl MailApp {
             },
         };
         let problems = self.problems_unseen;
+        let status_room = (self.width * 0.4).min(480.);
+        let mut room = self.width - status_room - 48.;
+        let hints: Vec<(SharedString, SharedString)> = hints
+            .into_iter()
+            .take_while(|(k, l)| {
+                room -= k.chars().count() as f32 * 7.2 + l.chars().count() as f32 * 6.4 + 36.;
+                room >= 0.
+            })
+            .collect();
         div()
             .flex_none()
             .h(px(30.))
@@ -2903,7 +2955,7 @@ impl MailApp {
                 div()
                     .flex()
                     .flex_shrink_0()
-                    .max_w(px(480.))
+                    .max_w(px(status_room))
                     .min_w_0()
                     .items_center()
                     .gap_3()
@@ -2977,7 +3029,7 @@ impl MailApp {
         // Over the message list, never the reader: the HTML view would cover it.
         div()
             .absolute()
-            .left(px(SIDEBAR_WIDTH + 12.))
+            .left(px(self.sidebar_w() + 12.))
             .bottom(px(40.))
             .w(px(200.))
             .p_3()
@@ -3287,7 +3339,7 @@ impl MailApp {
             format!("{count} messages").into()
         };
         div()
-            .w(px(LIST_WIDTH))
+            .w(px(self.list_w()))
             .flex_none()
             .h_full()
             .flex()
@@ -3378,7 +3430,9 @@ impl MailApp {
             .into();
         let header = div()
                         .flex_none()
-                        .max_w(px(760.))
+                        .w_full()
+                        .max_w(px(READER_MAX))
+                        .mx_auto()
                         .px_8()
                         .pt_6()
                         .pb_4()
@@ -3441,7 +3495,9 @@ impl MailApp {
             let bar = blocked.then(|| {
                 div()
                     .flex_none()
-                    .mx_6()
+                    .w_full()
+                    .max_w(px(READER_MAX - 48.))
+                    .mx_auto()
                     .mb_2()
                     .px_3()
                     .py_2()
@@ -3453,7 +3509,7 @@ impl MailApp {
                     .gap_3()
                     .text_xs()
                     .text_color(pal().subtle)
-                    .child("Remote images are blocked to protect your privacy.")
+                    .child(div().flex_1().min_w_0().child("Remote images are blocked to protect your privacy."))
                     .child(
                         div()
                             .id("load-images")
@@ -3473,16 +3529,18 @@ impl MailApp {
                     )
             });
             // The web view is laid over this placeholder.
-            return reader.children(strip).child(header).children(bar).child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .mx_6()
-                    .mb_6()
-                    .rounded_lg()
-                    .overflow_hidden()
-                    .bg(rgb(0xffffff))
-                    .child(self.html_view.placeholder()),
+            return reader.children(strip).child(header).children(bar.map(|b| div().flex_none().px_6().child(b))).child(
+                div().flex_1().min_h_0().px_6().mb_6().flex().child(
+                    div()
+                        .flex_1()
+                        .h_full()
+                        .max_w(px(READER_MAX - 48.))
+                        .mx_auto()
+                        .rounded_lg()
+                        .overflow_hidden()
+                        .bg(rgb(0xffffff))
+                        .child(self.html_view.placeholder()),
+                ),
             );
         }
         reader.children(strip).child(
@@ -3493,13 +3551,15 @@ impl MailApp {
                 .child(header)
                 .child(
                     div()
-                        .max_w(px(760.))
+                        .w_full()
+                        .max_w(px(READER_MAX))
+                        .mx_auto()
                         .px_8()
                         .pb_6()
                         .text_sm()
                         .line_height(rems(1.45))
                         .text_color(pal().text)
-                        .child(body),
+                        .child(div().max_w(px(760.)).child(body)),
                 ),
         )
     }
@@ -3507,6 +3567,7 @@ impl MailApp {
 
 impl Render for MailApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.width = window.viewport_size().width.as_f32();
         self.track_status(cx);
         let html = self
             .reading()
@@ -3675,7 +3736,7 @@ impl Render for MailApp {
                     .when(self.settings_view.is_none() && self.sweep.is_some(), |d| d.child(self.render_sweep(cx)))
                     .when(main_panes && !writing_wide, |d| d.child(self.render_list(cx)))
                     .when(main_panes && writing_wide && self.composer.is_some(), |d| {
-                        if self.settings.blocks_open {
+                        if self.settings.blocks_open && !self.compact() {
                             d.child(self.render_blocks_panel(cx).into_any_element())
                         } else {
                             d.child(self.render_blocks_ribbon(cx).into_any_element())
@@ -3986,6 +4047,7 @@ fn main() {
         let bounds = Bounds::centered(None, size(px(1280.), px(820.)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_min_size: Some(size(px(720.), px(480.))),
             titlebar: Some(TitlebarOptions {
                 title: Some("Wax".into()),
                 ..Default::default()
