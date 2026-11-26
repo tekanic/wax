@@ -24,7 +24,7 @@ for part in re.split(r"(?m)^(?=## )", readme):
     m = re.match(r"## (.+)\n", part)
     if m:
         sections[m.group(1).strip()] = part
-order = ["Install", "Accounts", "Keyboard", "Labels", "Plugins", "Themes", "Your files", "Problems"]
+order = ["Install", "Accounts", "Keyboard", "Blocks", "Labels", "Plugins", "Themes", "Your files", "Problems"]
 guide = "\n".join(sections[name] for name in order if name in sections)
 guide = links(guide, r"\]\(((?:LICENSE|wit|plugins|src|scripts|assets)[^)#]*)\)")
 (out / "guide.md").write_text(guide)

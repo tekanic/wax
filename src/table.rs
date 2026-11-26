@@ -190,6 +190,336 @@ impl Table {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Agg {
+    Sum,
+    Avg,
+    Count,
+    Min,
+    Max,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Fmt {
+    prefix: String,
+    suffix: String,
+    decimals: usize,
+    commas: bool,
+}
+
+fn plain(cell: &str) -> String {
+    cell.trim().trim_matches(|c| c == '*' || c == '_').trim().trim_end_matches(':').trim().to_lowercase()
+}
+
+fn aggregate_of(label: &str) -> Option<Agg> {
+    match plain(label).as_str() {
+        "total" | "sum" | "subtotal" | "grand total" | "totals" => Some(Agg::Sum),
+        "average" | "avg" | "mean" => Some(Agg::Avg),
+        "count" => Some(Agg::Count),
+        "min" | "minimum" | "lowest" => Some(Agg::Min),
+        "max" | "maximum" | "highest" => Some(Agg::Max),
+        _ => None,
+    }
+}
+
+fn numbers_column(header: &str) -> bool {
+    matches!(plain(header).as_str(), "#" | "no" | "no." | "number")
+}
+
+fn number(cell: &str) -> Option<(f64, Fmt)> {
+    let t = cell.trim().trim_matches(|c| c == '*' || c == '_').trim();
+    if t.is_empty() || !looks_numeric(t) {
+        return None;
+    }
+    let negative = t.starts_with('-') || (t.starts_with('(') && t.ends_with(')'));
+    let core = t.trim_start_matches(['-', '(']).trim_end_matches(')');
+    let prefix: String = core.chars().take_while(|c| "$€£".contains(*c)).collect();
+    let core = &core[prefix.len()..];
+    let suffix = if core.ends_with('%') { "%".to_string() } else { String::new() };
+    let core = core.trim_end_matches('%');
+    let decimals = core.split_once('.').map(|(_, d)| d.len()).unwrap_or(0);
+    let v: f64 = core.replace(',', "").parse().ok()?;
+    Some((if negative { -v } else { v }, Fmt { prefix, suffix, decimals, commas: core.contains(',') }))
+}
+
+fn show(v: f64, f: &Fmt) -> String {
+    let neg = v < 0.0;
+    let s = format!("{:.*}", f.decimals, v.abs());
+    let (int, frac) = s.split_once('.').map(|(a, b)| (a.to_string(), Some(b.to_string()))).unwrap_or((s.clone(), None));
+    let int = if f.commas || int.len() > 4 {
+        let digits: Vec<char> = int.chars().collect();
+        let mut out = String::new();
+        for (i, c) in digits.iter().enumerate() {
+            if i > 0 && (digits.len() - i) % 3 == 0 {
+                out.push(',');
+            }
+            out.push(*c);
+        }
+        out
+    } else {
+        int
+    };
+    let body = match frac {
+        Some(fr) => format!("{int}.{fr}"),
+        None => int,
+    };
+    format!("{}{}{body}{}", if neg { "-" } else { "" }, f.prefix, f.suffix)
+}
+
+fn merge(a: Option<Fmt>, b: &Fmt) -> Fmt {
+    match a {
+        None => b.clone(),
+        Some(a) => Fmt {
+            prefix: if a.prefix.is_empty() { b.prefix.clone() } else { a.prefix },
+            suffix: if a.suffix.is_empty() { b.suffix.clone() } else { a.suffix },
+            decimals: a.decimals.max(b.decimals),
+            commas: a.commas || b.commas,
+        },
+    }
+}
+
+fn split_formula(header: &str) -> Option<(&str, &str)> {
+    let (name, expr) = header.split_once('=')?;
+    let expr = expr.trim();
+    (!expr.is_empty()).then_some((name.trim_end(), expr))
+}
+
+struct Expr<'a> {
+    s: &'a [u8],
+    at: usize,
+    value: &'a dyn Fn(&str) -> Option<(f64, Fmt)>,
+    fmt: Option<Fmt>,
+}
+
+impl Expr<'_> {
+    fn skip(&mut self) {
+        while self.s.get(self.at).is_some_and(|c| c.is_ascii_whitespace()) {
+            self.at += 1;
+        }
+    }
+
+    fn sum(&mut self) -> Option<f64> {
+        let mut v = self.product()?;
+        loop {
+            self.skip();
+            match self.s.get(self.at) {
+                Some(b'+') => {
+                    self.at += 1;
+                    v += self.product()?;
+                }
+                Some(b'-') => {
+                    self.at += 1;
+                    v -= self.product()?;
+                }
+                _ => return Some(v),
+            }
+        }
+    }
+
+    fn product(&mut self) -> Option<f64> {
+        let mut v = self.atom()?;
+        loop {
+            self.skip();
+            match self.s.get(self.at) {
+                Some(b'*') => {
+                    self.at += 1;
+                    v *= self.atom()?;
+                }
+                Some(b'/') => {
+                    self.at += 1;
+                    let d = self.atom()?;
+                    if d == 0.0 {
+                        return None;
+                    }
+                    v /= d;
+                }
+                _ => return Some(v),
+            }
+        }
+    }
+
+    fn atom(&mut self) -> Option<f64> {
+        self.skip();
+        match *self.s.get(self.at)? {
+            b'(' => {
+                self.at += 1;
+                let v = self.sum()?;
+                self.skip();
+                (self.s.get(self.at) == Some(&b')')).then(|| self.at += 1)?;
+                Some(v)
+            }
+            b'-' => {
+                self.at += 1;
+                Some(-self.atom()?)
+            }
+            c if c.is_ascii_digit() || c == b'.' => {
+                let start = self.at;
+                while self.s.get(self.at).is_some_and(|c| c.is_ascii_digit() || *c == b'.') {
+                    self.at += 1;
+                }
+                let mut v: f64 = std::str::from_utf8(&self.s[start..self.at]).ok()?.parse().ok()?;
+                if self.s.get(self.at) == Some(&b'%') {
+                    self.at += 1;
+                    v /= 100.0;
+                }
+                Some(v)
+            }
+            c if c.is_ascii_alphabetic() || c == b'#' => {
+                let start = self.at;
+                while self.s.get(self.at).is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'#' || *c == b'.') {
+                    self.at += 1;
+                }
+                let name = std::str::from_utf8(&self.s[start..self.at]).ok()?;
+                let (v, f) = (self.value)(name)?;
+                if f.suffix != "%" {
+                    self.fmt = Some(merge(self.fmt.take(), &f));
+                }
+                Some(if f.suffix == "%" { v / 100.0 } else { v })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl Table {
+    pub fn calculate(&mut self) {
+        if self.rows.len() < 2 {
+            return;
+        }
+        let n = self.cols();
+        let numbering = (0..n).find(|&c| numbers_column(&self.rows[0][c]));
+        let label_col = (0..n).find(|&c| Some(c) != numbering).unwrap_or(0);
+        let totals: Vec<(usize, Agg)> = (1..self.rows.len()).filter_map(|r| aggregate_of(&self.rows[r][label_col]).map(|a| (r, a))).collect();
+        let body: Vec<usize> = (1..self.rows.len()).filter(|r| !totals.iter().any(|(t, _)| t == r)).collect();
+        if let Some(c) = numbering {
+            let mut i = 0;
+            for &r in &body {
+                if self.rows[r].iter().enumerate().any(|(k, cell)| k != c && !cell.trim().is_empty()) {
+                    i += 1;
+                    self.rows[r][c] = i.to_string();
+                } else {
+                    self.rows[r][c].clear();
+                }
+            }
+            for (r, _) in &totals {
+                self.rows[*r][c].clear();
+            }
+        }
+        let headers: Vec<String> = self.rows[0].iter().map(|h| split_formula(h).map(|(name, _)| name).unwrap_or(h).to_string()).collect();
+        let key = |h: &str| plain(h).replace([' ', '_'], "");
+        let find = |name: &str| -> Option<usize> {
+            let wanted = key(name);
+            (0..n).find(|&c| key(&headers[c]) == wanted).or_else(|| {
+                let b = name.as_bytes();
+                (b.len() == 1 && b[0].is_ascii_alphabetic()).then(|| (b[0].to_ascii_uppercase() - b'A') as usize).filter(|&ix| ix < n)
+            })
+        };
+        for c in 0..n {
+            let Some(expr) = split_formula(&self.rows[0][c]).map(|(_, e)| e.replace('×', "*")) else { continue };
+            for &r in &body {
+                let row = self.rows[r].clone();
+                let value = |name: &str| find(name).filter(|&k| k != c).and_then(|k| number(&row[k]));
+                let mut e = Expr { s: expr.as_bytes(), at: 0, value: &value, fmt: None };
+                let result = e.sum().filter(|_| {
+                    e.skip();
+                    e.at == e.s.len()
+                });
+                self.rows[r][c] = match result {
+                    Some(v) if v.is_finite() => {
+                        let mut f = e.fmt.unwrap_or(Fmt { prefix: String::new(), suffix: String::new(), decimals: 0, commas: false });
+                        if v.fract().abs() > 1e-9 && f.decimals == 0 {
+                            f.decimals = 2;
+                        }
+                        show(v, &f)
+                    }
+                    _ => String::new(),
+                };
+            }
+        }
+        for c in 0..n {
+            if c == label_col || Some(c) == numbering {
+                continue;
+            }
+            let cells: Vec<&String> = body.iter().map(|&r| &self.rows[r][c]).filter(|s| !s.trim().is_empty()).collect();
+            let parsed: Vec<(f64, Fmt)> = cells.iter().filter_map(|s| number(s)).collect();
+            if parsed.is_empty() || parsed.len() != cells.len() {
+                continue;
+            }
+            let fmt = parsed.iter().fold(None, |acc, (_, f)| Some(merge(acc, f))).unwrap();
+            let values: Vec<f64> = parsed.iter().map(|(v, _)| *v).collect();
+            let name = plain(&headers[c]);
+            let per_unit = ["price", "rate", "unit", "each", "per ", "/"].iter().any(|k| name.contains(k)) || fmt.suffix == "%";
+            for (r, agg) in &totals {
+                if *agg == Agg::Sum && per_unit {
+                    continue;
+                }
+                let (v, f) = match agg {
+                    Agg::Sum => (values.iter().sum(), fmt.clone()),
+                    Agg::Avg => {
+                        let mut f = fmt.clone();
+                        f.decimals = f.decimals.max(1);
+                        (values.iter().sum::<f64>() / values.len() as f64, f)
+                    }
+                    Agg::Count => (values.len() as f64, Fmt { prefix: String::new(), suffix: String::new(), decimals: 0, commas: false }),
+                    Agg::Min => (values.iter().cloned().fold(f64::INFINITY, f64::min), fmt.clone()),
+                    Agg::Max => (values.iter().cloned().fold(f64::NEG_INFINITY, f64::max), fmt.clone()),
+                };
+                let bold = self.rows[*r][label_col].trim().starts_with("**");
+                let text = show(v, &f);
+                self.rows[*r][c] = if bold { format!("**{text}**") } else { text };
+            }
+        }
+    }
+
+    fn strip_formulas(&mut self) -> bool {
+        let mut changed = false;
+        for h in self.rows[0].iter_mut() {
+            if let Some((name, _)) = split_formula(h) {
+                *h = name.to_string();
+                changed = true;
+            }
+        }
+        changed
+    }
+}
+
+fn map_tables(text: &str, mut f: impl FnMut(&mut Table) -> bool) -> String {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if !lines[i].trim_start().starts_with('|') {
+            out.push(lines[i].to_string());
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < lines.len() && lines[j].trim_start().starts_with('|') {
+            j += 1;
+        }
+        let block = &lines[i..j];
+        let changed = Table::parse(block).filter(|_| block.iter().any(|l| is_separator(&cells(l)))).and_then(|mut t| f(&mut t).then(|| t.render()));
+        match changed {
+            Some(r) => out.push(r),
+            None => out.extend(block.iter().map(|l| l.to_string())),
+        }
+        i = j;
+    }
+    out.join("\n")
+}
+
+pub fn strip_formulas(text: &str) -> String {
+    map_tables(text, |t| t.strip_formulas())
+}
+
+pub fn calculate_all(text: &str) -> String {
+    map_tables(text, |t| {
+        let before = t.rows.clone();
+        t.calculate();
+        t.rows != before
+    })
+}
+
 /// Clipboard text from a spreadsheet → a Markdown table.
 pub fn from_tsv(text: &str) -> Option<String> {
     let text = text.trim_end_matches(['\n', '\r']);
@@ -248,6 +578,7 @@ pub fn tab(text: &str, cursor: usize, back: bool) -> Option<(String, Range<usize
     let block = &text[range.clone()];
     let lines: Vec<&str> = block.split('\n').collect();
     let mut table = Table::parse(&lines)?;
+    table.calculate();
     // Where the cursor is: line, then cell (count pipes before it).
     let mut rel = cursor - range.start;
     let mut line_ix = 0;
@@ -322,6 +653,68 @@ mod tests {
         // Back: shift-tab returns to the previous cell.
         let (_, back) = tab(&out, out.find("b ").unwrap(), true).unwrap();
         assert_eq!(&out[back], "a");
+    }
+
+    fn rows(text: &str) -> Vec<Vec<String>> {
+        let lines: Vec<&str> = text.lines().collect();
+        Table::parse(&lines).unwrap().rows
+    }
+
+    #[test]
+    fn totals_add_up_in_the_column_format() {
+        let t = calculate_all("| Item | Qty | Price |\n|---|---|---|\n| Catalog | 2,000 | $1,250.00 |\n| Inserts | 500 | $310.50 |\n| **Total** | | |");
+        let r = rows(&t);
+        assert_eq!(r[3], ["**Total**", "**2,500**", ""], "unit prices don't add up");
+        let t = calculate_all("| Item | Cost |\n|---|---|\n| A | $1,250.00 |\n| B | $310.50 |\n| Total | |");
+        assert_eq!(rows(&t)[3][1], "$1,560.50");
+    }
+
+    #[test]
+    fn average_count_and_more() {
+        let t = calculate_all("| Lab | Days |\n|---|---|\n| A | 3 |\n| B | 4 |\n| Average | |\n| Count | |\n| Max | |");
+        let r = rows(&t);
+        assert_eq!(r[3][1], "3.5");
+        assert_eq!(r[4][1], "2");
+        assert_eq!(r[5][1], "4");
+    }
+
+    #[test]
+    fn hash_column_numbers_rows() {
+        let t = calculate_all("| # | Step |\n|---|---|\n| | Sign off |\n| 7 | Send list |\n| | |\n| | Confirm |");
+        let r = rows(&t);
+        let nums: Vec<&str> = r.iter().skip(1).map(|r| r[0].as_str()).collect();
+        assert_eq!(nums, ["1", "2", "", "3"]);
+    }
+
+    #[test]
+    fn column_formulas_by_name_or_letter() {
+        let t = calculate_all("| Item | Qty | Price | Amount =Qty*Price |\n|---|---|---|---|\n| Catalog | 2,000 | $0.62 | |\n| Inserts | 500 | $0.10 | |\n| Total | | | |");
+        let r = rows(&t);
+        assert_eq!(r[1][3], "$1,240.00");
+        assert_eq!(r[2][3], "$50.00");
+        assert_eq!(r[3][3], "$1,290.00");
+        let t = calculate_all("| A | B | C =A*B + 1 |\n|---|---|---|\n| 2 | 3 | |\n| x | 3 | |");
+        let r = rows(&t);
+        assert_eq!(r[1][2], "7");
+        assert_eq!(r[2][2], "", "a missing number leaves it blank");
+        let t = calculate_all("| Price | Tax | With tax =Price*(1+Tax) |\n|---|---|---|\n| $100.00 | 8% | |");
+        assert_eq!(rows(&t)[1][2], "$108.00");
+    }
+
+    #[test]
+    fn formulas_never_reach_the_recipient() {
+        let text = "Hi\n\n| Qty | Price | Amount =Qty*Price |\n|---|---|---|\n| 2 | $5.00 | $10.00 |\n\nBye";
+        let sent = strip_formulas(text);
+        assert!(sent.contains("| Amount ") && !sent.contains('='), "{sent}");
+        assert!(sent.starts_with("Hi\n\n") && sent.ends_with("\n\nBye"));
+        assert_eq!(strip_formulas("plain text | with a pipe"), "plain text | with a pipe");
+    }
+
+    #[test]
+    fn tab_recalculates() {
+        let text = "| Item | Cost |\n|---|---|\n| A | 5 |\n| B | 7 |\n| Total | |";
+        let (out, _) = tab(text, text.find("| 7").unwrap() + 2, false).unwrap();
+        assert!(out.contains("| Total | 12"), "{out}");
     }
 
     #[test]

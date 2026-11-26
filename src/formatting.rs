@@ -49,7 +49,7 @@ impl Format {
 
 /// Byte range where `old` and `new` differ (on char boundaries), so an edit
 /// replaces only that and the editor's undo history stays meaningful.
-fn diff_range(old: &str, new: &str) -> (Range<usize>, Range<usize>) {
+pub fn diff_range(old: &str, new: &str) -> (Range<usize>, Range<usize>) {
     let mut pre = old.bytes().zip(new.bytes()).take_while(|(a, b)| a == b).count();
     while !old.is_char_boundary(pre) || !new.is_char_boundary(pre) {
         pre -= 1;

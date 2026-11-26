@@ -546,6 +546,44 @@ impl MailApp {
                     self.toggle_preview(window, cx);
                 }
             }
+            "fill" | "fill-done" | "tables" | "block-editor" => {
+                self.settings.blocks_open = true;
+                let mut d = compose::Draft::new();
+                d.account = WORK.to_string();
+                d.to = "Priya Shah <priya@lumenhouse.studio>".into();
+                d.subject = if v != "block-editor" { "Quote: spring catalog".into() } else { "Proofs by Thursday".into() };
+                if v == "block-editor" {
+                    d.body = "Hi Priya,\n\nThe proofs for the spring catalog are attached. Could you sign them off by Thursday? The print run comes to $1,240.00.\n\nThanks!".into();
+                }
+                let d = self.with_defaults(d);
+                self.open_composer(d, window, cx);
+                if v != "block-editor" {
+                    self.reload_blocks();
+                    let values: &[&str] = if v == "fill" { &["spring catalog", "Catalog print run"] } else { &["spring catalog", "Catalog print run", "2,000", "$0.62"] };
+                    if let Some(b) = self.blocks.iter().find(|b| b.name == "Quote").cloned() {
+                        self.insert_block(&b, Some(0), window, cx);
+                        for value in values {
+                            let Some(c) = &self.composer else { break };
+                            let s = c.body.read(cx);
+                            let (text, sel) = (s.value().to_string(), s.selected_range());
+                            let new = format!("{}{}{}", &text[..sel.start], value, &text[sel.end..]);
+                            let end = sel.start + value.len();
+                            self.apply_body_edit(new, end..end, window, cx);
+                            self.fill_step(false, window, cx);
+                        }
+                    }
+                    if v == "tables" {
+                        self.toggle_preview(window, cx);
+                    }
+                } else if let Some(c) = &self.composer {
+                    let body = c.body.clone();
+                    body.update(cx, |s, cx| {
+                        let len = s.value().find("\n\nThanks").unwrap_or(0);
+                        s.set_selected_range(0..len, cx);
+                    });
+                    self.save_selection_as_block(window, cx);
+                }
+            }
             "signature" => self.open_settings(settings::Pane::Signatures, window, cx),
             "sweep" => self.open_sweep(window, cx),
             "plugins" => self.open_settings(settings::Pane::Plugins, window, cx),

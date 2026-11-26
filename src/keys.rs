@@ -67,6 +67,7 @@ actions!(
         FormatTable,
         SmartPaste,
         TableTab,
+        SaveAsBlock,
         TableBackTab,
         CycleSignature,
         OpenSettings,
@@ -511,6 +512,7 @@ fn defaults() -> (Vec<Def>, Vec<Hint>) {
         .bind("cmd-shift-a", AttachFile, Writing, Some(("⌘⇧A", "attach")))
         .bind("cmd-shift-b", ShowBcc, Writing, Some(("⌘⇧B", "bcc on/off")))
         .bind("cmd-alt-t", FormatTable, Writing, None)
+        .bind("cmd-shift-k", SaveAsBlock, Writing, None)
         .bind("cmd-v", SmartPaste, Body, None)
         .bind("tab", TableTab, Body, None)
         .bind("shift-tab", TableBackTab, Body, None)

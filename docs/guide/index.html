@@ -101,6 +101,7 @@ code span.wa { color: #da4453; } /* Warning */
     <li><a href="#install" id="toc-install">Install</a></li>
     <li><a href="#accounts" id="toc-accounts">Accounts</a></li>
     <li><a href="#keyboard" id="toc-keyboard">Keyboard</a></li>
+    <li><a href="#blocks" id="toc-blocks">Blocks</a></li>
     <li><a href="#labels" id="toc-labels">Labels</a></li>
     <li><a href="#plugins" id="toc-plugins">Plugins</a></li>
     <li><a href="#themes" id="toc-themes">Themes</a></li>
@@ -266,6 +267,17 @@ key off. Mistakes show in the status bar and Settings → Problems.</p>
 <td>Bcc on / off</td>
 </tr>
 <tr>
+<td><code>⌘⇧K</code></td>
+<td>writing</td>
+<td>make a block of the selection</td>
+</tr>
+<tr>
+<td><code>tab</code></td>
+<td>writing</td>
+<td>next placeholder; after a block's shortcut (<code>;quote</code>),
+insert it; in a table, next cell (and recalculate)</td>
+</tr>
+<tr>
 <td><code>⏎</code></td>
 <td>Drafts folder</td>
 <td>edit the draft</td>
@@ -349,6 +361,44 @@ back</td>
 </table>
 <p>Single-letter keys only act when the search box isn't focused, so
 they can be typed into a search.</p>
+<h2 id="blocks">Blocks</h2>
+<p>Blocks are pieces you write often, kept as Markdown files in
+<code>~/.config/wax/blocks/</code>. Drag one from the Blocks panel into
+a message, click it to add it at the cursor, or type its shortcut and
+press <code>tab</code>.</p>
+<p><strong>Placeholders.</strong> <code>{{client}}</code> marks text to
+fill in, <code>{{qty:1}}</code> gives it a default. Inserting a block
+selects the first placeholder: type over it, <code>tab</code> to the
+next, <code>⇧tab</code> back. A placeholder that appears twice is typed
+once. <code>{{first name}}</code> and <code>{{recipient}}</code> come
+from the To field, <code>{{me}}</code> is your name,
+<code>{{today}}</code> and <code>{{tomorrow}}</code> are dates, and
+<code>{{cursor}}</code> is where you end up.</p>
+<p><strong>Making blocks.</strong> Select part of a message and press
+<code>⌘⇧K</code> (or New block… in the panel). The editor beside the
+message turns a selection into a placeholder and suggests some itself:
+the recipient's name, amounts, days and dates. A shortcut is written at
+the top of the file:</p>
+<pre><code>---
+shortcut: ;quote
+---
+Hi {{first name}}, here&#39;s the quote for {{project}}:</code></pre>
+<p><strong>Tables that add up.</strong> Tables recalculate whenever
+<code>tab</code> moves between cells:</p>
+<ul>
+<li>A row labelled <strong>Total</strong> (or Sum, Average, Count, Min,
+Max) fills in every number column above it. Unit prices and rates aren't
+added up.</li>
+<li>A column headed <code>#</code> numbers the rows.</li>
+<li>A header like <code>Amount =Qty*Price</code> works out that column
+from the others, by column name or letter (<code>=B*C</code>), with
+<code>+ - * /</code>, brackets and percentages. The formula never
+reaches the recipient: the column is sent as "Amount".</li>
+<li>Totals keep the column's format: <code>$1,240.00</code> stays in
+dollars.</li>
+</ul>
+<p>The Quote starter (<code>;quote</code>) puts all of this
+together.</p>
 <h2 id="labels">Labels</h2>
 <p>Press <strong><code>l</code></strong> on a message (or on marked
 messages, or pick "Label…" from the right-click menu) to open the label
@@ -377,7 +427,7 @@ keeps doing it is switched off. A new plugin starts off; Settings →
 Plugins shows what it asks for and switches it on, which writes its
 <code>grants.toml</code>. Actions beyond what was granted are refused.
 Each plugin reads its own <code>config.toml</code>.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/build-plugins.sh</span>            <span class="co"># build plugins/* and install them</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/build-plugins.sh</span>            <span class="co"># build plugins/* and install them</span></span></code></pre></div>
 <p><strong>Writing one:</strong> <a
 href="https://tekanic.github.io/wax/plugins/">the plugin guide</a> (<a
 href="../plugins/">source</a>). The interface is MIT licensed, so a
@@ -518,7 +568,7 @@ accounts/&lt;email&gt;/rules.toml         that account&#39;s sender rules: &quot
 signatures/&lt;name&gt;/signature.toml    fields, layout, font, links, its account (+ logo.png, logo2.png)
 signatures/.deleted/                deleted signatures, kept just in case
 identities/&lt;email&gt;.toml             extra From addresses (and the account they send through)
-blocks/&lt;name&gt;.md                    blocks for the composer ({{cursor}} = start here)
+blocks/&lt;name&gt;.md                    blocks for the composer (see Blocks)
 dictionary.txt                      words the spelling check accepts, one per line</code></pre>
 <p><code>~/Library/Application Support/gpui-mail/</code> keeps what
 isn't a setting: <code>cache.sqlite</code> (only what can be fetched

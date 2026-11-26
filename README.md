@@ -37,7 +37,8 @@ sandboxed WebAssembly plugin you choose.
 - Eight seconds to review and undo every send; drafts autosave locally and save
   to Gmail.
 - Signatures designed in the app, From addresses per account, Bcc,
-  attachments, address suggestions, and Blocks: reusable Markdown snippets.
+  attachments, address suggestions, and Blocks: reusable pieces with placeholders
+  you tab through, typing shortcuts like `;quote`, and tables that add up.
 
 **Organizing**
 - Every action has a key, and the bottom bar shows the ones that apply.
@@ -140,6 +141,43 @@ subject contains "invoice" => label "Receipts"
 from ends-with "@github.com" => move "GitHub"
 ```
 
+## Blocks
+
+Blocks are pieces you write often, kept as Markdown files in
+`~/.config/wax/blocks/`. Drag one from the Blocks panel into a message, click it
+to add it at the cursor, or type its shortcut and press `tab`.
+
+**Placeholders.** `{{client}}` marks text to fill in, `{{qty:1}}` gives it a
+default. Inserting a block selects the first placeholder: type over it, `tab` to
+the next, `⇧tab` back. A placeholder that appears twice is typed once.
+`{{first name}}` and `{{recipient}}` come from the To field, `{{me}}` is your
+name, `{{today}}` and `{{tomorrow}}` are dates, and `{{cursor}}` is where you end
+up.
+
+**Making blocks.** Select part of a message and press `⌘⇧K` (or New block… in
+the panel). The editor beside the message turns a selection into a placeholder
+and suggests some itself: the recipient's name, amounts, days and dates.
+A shortcut is written at the top of the file:
+
+```
+---
+shortcut: ;quote
+---
+Hi {{first name}}, here's the quote for {{project}}:
+```
+
+**Tables that add up.** Tables recalculate whenever `tab` moves between cells:
+
+- A row labelled **Total** (or Sum, Average, Count, Min, Max) fills in every
+  number column above it. Unit prices and rates aren't added up.
+- A column headed `#` numbers the rows.
+- A header like `Amount =Qty*Price` works out that column from the others, by
+  column name or letter (`=B*C`), with `+ - * /`, brackets and percentages.
+  The formula never reaches the recipient: the column is sent as "Amount".
+- Totals keep the column's format: `$1,240.00` stays in dollars.
+
+The Quote starter (`;quote`) puts all of this together.
+
 ## Your files
 
 Everything you set up is plain text in `~/.config/wax/` (like Zed's
@@ -156,7 +194,7 @@ accounts/<email>/rules.toml         that account's sender rules: "address" = "ke
 signatures/<name>/signature.toml    fields, layout, font, links, its account (+ logo.png, logo2.png)
 signatures/.deleted/                deleted signatures, kept just in case
 identities/<email>.toml             extra From addresses (and the account they send through)
-blocks/<name>.md                    blocks for the composer ({{cursor}} = start here)
+blocks/<name>.md                    blocks for the composer (see Blocks)
 dictionary.txt                      words the spelling check accepts, one per line
 ```
 
@@ -225,6 +263,8 @@ bindings, the hint bar at the bottom of the window and the `g` menu.
 | `⌘⇧P` | writing | preview the message as it will arrive |
 | `⌘⇧A` | writing | attach files |
 | `⌘⇧B` | writing | Bcc on / off |
+| `⌘⇧K` | writing | make a block of the selection |
+| `tab` | writing | next placeholder; after a block's shortcut (`;quote`), insert it; in a table, next cell (and recalculate) |
 | `⏎` | Drafts folder | edit the draft |
 | `x` / `⌘A` | list | mark one / mark all loaded (`esc` clears) |
 | `e` | list | archive marked (or current); in Trash, Spam and Screened Out: back to the Inbox |

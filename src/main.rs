@@ -46,6 +46,7 @@ mod theme;
 mod about;
 mod splash;
 mod spell;
+mod fill;
 mod demo;
 mod window_state;
 mod threads;
@@ -361,6 +362,8 @@ struct MailApp {
     show_hints: bool,
     splash: Option<splash::Splash>,
     spell: Vec<spell::Found>,
+    fill: Option<fill::Fill>,
+    block_editor: Option<blocks::BlockEditor>,
     spell_gen: u64,
     bounds_gen: u64,
     width: f32,
@@ -505,6 +508,8 @@ impl MailApp {
             show_hints: true,
             splash: None,
             spell: Vec::new(),
+            fill: None,
+            block_editor: None,
             spell_gen: 0,
             bounds_gen: 0,
             width: 1280.,
@@ -974,6 +979,7 @@ impl MailApp {
         subs.push(cx.subscribe(&state.body, |this, _, event: &InputEvent, cx| {
             if let InputEvent::Change = event {
                 this.schedule_autosave(cx);
+                this.fill_changed(cx);
                 this.schedule_spellcheck(cx);
             }
         }));
@@ -982,6 +988,8 @@ impl MailApp {
         self.composer = Some(state);
         self.compose_subs = subs;
         self.spell.clear();
+        self.fill = None;
+        self.block_editor = None;
         self.schedule_spellcheck(cx);
         self.save_snapshot_now(cx);
         cx.notify();
@@ -1800,6 +1808,7 @@ impl MailApp {
                 )
                 .into_any_element()
             })
+            .children(self.render_fill_hint())
             .children(self.render_spelling(cx))
             .child(self.render_signature_strip(cx))
     }
@@ -3723,8 +3732,9 @@ impl Render for MailApp {
             .on_action(cx.listener(|this, _: &ShowBcc, w, cx| this.toggle_bcc(w, cx)))
             .on_action(cx.listener(|this, _: &FormatTable, w, cx| this.format(Format::Table, w, cx)))
             .on_action(cx.listener(|this, _: &SmartPaste, w, cx| this.smart_paste(w, cx)))
-            .on_action(cx.listener(|this, _: &TableTab, w, cx| this.table_tab(false, w, cx)))
-            .on_action(cx.listener(|this, _: &TableBackTab, w, cx| this.table_tab(true, w, cx)))
+            .on_action(cx.listener(|this, _: &TableTab, w, cx| this.body_tab(false, w, cx)))
+            .on_action(cx.listener(|this, _: &TableBackTab, w, cx| this.body_tab(true, w, cx)))
+            .on_action(cx.listener(|this, _: &SaveAsBlock, w, cx| this.save_selection_as_block(w, cx)))
             .on_action(cx.listener(|this, _: &CycleSignature, _, cx| this.cycle_signature(cx)))
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| this.open_settings(settings::Pane::Writing, w, cx)))
             .on_action(cx.listener(|this, _: &ShowPlugins, w, cx| this.open_settings(settings::Pane::Plugins, w, cx)))

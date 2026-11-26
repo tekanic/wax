@@ -255,7 +255,7 @@ pub fn parse_addresses(field: &str) -> Result<Vec<(String, String)>> {
     Ok(out)
 }
 
-fn parse_lenient(field: &str) -> Vec<(String, String)> {
+pub fn parse_lenient(field: &str) -> Vec<(String, String)> {
     field
         .split([',', ';'])
         .filter_map(|p| parse_addresses(p).ok())
@@ -288,9 +288,10 @@ pub fn split_quote(body: &str) -> (&str, &str) {
 /// text/plain and text/html for a draft and its signature.
 pub fn render_bodies(d: &Draft, sig: Option<&crate::signature::Signature>, preview: bool) -> (String, String) {
     let (mine, quoted) = split_quote(&d.body);
+    let mine = crate::table::strip_formulas(mine);
     let font = crate::md::font(d.mono);
     let mut text = mine.trim_end().to_string();
-    let mut html = crate::md::to_email_html(mine, d.mono);
+    let mut html = crate::md::to_email_html(&mine, d.mono);
     if let Some(sig) = sig {
         text.push_str("\n\n");
         text.push_str(&sig.text());
