@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wax compared with other Mac mail apps · Wax</title>
+<meta name="description" content="How Wax compares with Apple Mail, Mimestream, Spark, Outlook, Thunderbird, Airmail, MailMate and Superhuman: price, source code, how each is built, plugins, privacy, size and memory.">
+<link rel="icon" type="image/png" href="../wax-icon-1024.png">
+<link rel="canonical" href="https://tekanic.github.io/wax/compare/">
+<meta property="og:title" content="Wax compared with other Mac mail apps">
+<meta property="og:description" content="Price, source code, how each app is built, plugins, privacy, size and memory, side by side.">
+<meta property="og:image" content="https://tekanic.github.io/wax/shots/og.jpg">
+<meta property="og:url" content="https://tekanic.github.io/wax/compare/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body class="doc">
+<header class="wrap top">
+  <a class="mark" href="../" aria-label="Wax home"><img src="../wax-icon-1024.png" alt=""><span class="word">wax</span></a>
+  <nav aria-label="Main"><a href="../#tour">Tour</a><a href="../guide/">Guide</a><a href="../plugins/">Plugins</a><a href="./" aria-current="page">Compare</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
+</header>
+<main class="wrap compare">
+  <h1>Wax and the other Mac mail apps</h1>
+  <p class="lede">How Wax compares with the mail apps Mac users usually choose between: what they cost, whether you can read the code, how they're built, what you can add to them, and what they cost your Mac to run.</p>
+
+  <section aria-labelledby="glance">
+    <h2 id="glance">At a glance</h2>
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="glance">
+      <table class="vs">
+        <thead>
+          <tr><th scope="col">App</th><th scope="col">Price</th><th scope="col">Source code</th><th scope="col">Built with</th><th scope="col">Add features with</th><th scope="col">Accounts</th><th scope="col">Your login</th></tr>
+        </thead>
+        <tbody>
+          <tr class="us"><th scope="row">Wax</th><td>Free</td><td>Open, GPL-3.0</td><td>Rust on GPUI, drawn on the GPU</td><td>Sandboxed WebAssembly plugins</td><td>Gmail and Google Workspace</td><td>Keychain on your Mac; Wax talks to Google directly</td></tr>
+          <tr><th scope="row">Apple Mail</th><td>Free with macOS</td><td>Closed</td><td>Native</td><td>MailKit extensions, which Apple keeps narrow</td><td>Any</td><td>On your Mac</td></tr>
+          <tr><th scope="row">Mimestream</th><td>$49.99 a year</td><td>Closed</td><td>Native: Swift, SwiftUI, AppKit</td><td>None</td><td>Google accounts</td><td>On your Mac; its push service never gets your Google sign-in</td></tr>
+          <tr><th scope="row">Spark</th><td>Free; Plus $99 a year</td><td>Closed</td><td>Electron (a bundled Chromium)</td><td>Built-in integrations only</td><td>Any</td><td>Encrypted on Spark's servers</td></tr>
+          <tr><th scope="row">Outlook</th><td>Free; more with Microsoft&nbsp;365</td><td>Closed</td><td>Native, synced through Microsoft's cloud</td><td>Office add-ins</td><td>Microsoft and others</td><td>Through Microsoft's cloud</td></tr>
+          <tr><th scope="row">Thunderbird</th><td>Free</td><td>Open, MPL-2.0</td><td>Mozilla's Gecko engine</td><td>Add-ons in JavaScript</td><td>Any</td><td>On your Mac</td></tr>
+          <tr><th scope="row">Airmail</th><td>Free; Pro $49.99 a year</td><td>Closed</td><td>Native</td><td>Built-in integrations only</td><td>Any</td><td>Not checked</td></tr>
+          <tr><th scope="row">MailMate</th><td>$10 every 3 months, or a free mode</td><td>Closed</td><td>Native</td><td>Not checked</td><td>IMAP</td><td>Not checked</td></tr>
+          <tr><th scope="row">Superhuman</th><td>$300 a year</td><td>Closed</td><td>Not checked</td><td>Built-in integrations only</td><td>Gmail and Microsoft&nbsp;365</td><td>Not checked</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Prices are US list prices for one person as of November 2026. MailMate is still developed, but its developer said in March 2026 there had been no release since October 2025. Not listed: Postbox, which eM Client bought and stopped updating in 2024, and Notion Mail, which shut down on 22 September 2026. "Not checked" means we couldn't confirm it from what the maker publishes.</p>
+  </section>
+
+  <section aria-labelledby="measured">
+    <h2 id="measured">Measured on one Mac</h2>
+    <p>The same Apple silicon MacBook, 26 November 2026. Size is the app on disk. Memory is what Activity Monitor calls Memory, added up across every process the app runs, including the web views it starts, about a minute after opening, with the accounts each app already had.</p>
+    <div class="table-wrap narrow" tabindex="0" role="region" aria-labelledby="measured">
+      <table class="vs nums">
+        <thead><tr><th scope="col">App</th><th scope="col">Size on disk</th><th scope="col">Memory while running</th></tr></thead>
+        <tbody>
+          <tr class="us"><th scope="row">Wax</th><td>47 MB</td><td>158 MB</td></tr>
+          <tr><th scope="row">Apple Mail</th><td>13 MB*</td><td>515 MB</td></tr>
+          <tr><th scope="row">MailMate</th><td>36 MB</td><td>424 MB</td></tr>
+          <tr><th scope="row">Airmail</th><td>40 MB</td><td>No accounts set up</td></tr>
+          <tr><th scope="row">Thunderbird</th><td>536 MB</td><td>1.9 GB</td></tr>
+          <tr><th scope="row">Spark</th><td>720 MB</td><td>446 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">This is one Mac, not a benchmark: the apps hold different amounts of mail. Wax caches headers only (53,383 of them, 96&nbsp;MB). MailMate keeps 3.6&nbsp;GB of mail on the Mac and Thunderbird a full 22&nbsp;GB offline copy, so they're doing more work. Airmail had no accounts set up, so its number wouldn't mean anything. *Apple Mail is small on disk because it uses frameworks that come with macOS.</p>
+  </section>
+
+  <section aria-labelledby="why">
+    <h2 id="why">Where Wax is ahead</h2>
+    <ul class="choices">
+      <li><h3>Speed</h3><p>Wax is drawn on the GPU with GPUI, the framework behind the Zed editor, and every header is cached on your Mac in SQLite. Folders open the moment you click, search covers mail you haven't opened, and nothing waits on a web page to render. Spark, by contrast, ships a whole Chromium browser inside the app: 373&nbsp;MB of its 720&nbsp;MB.</p></li>
+      <li><h3>Security</h3><p>Wax is written in Rust, which rules out a whole class of bugs before the app is built. That class matters: Google found that about 70% of serious Chrome security bugs were memory-safety problems, and Microsoft reported the same share for its own security fixes. HTML mail opens in a sandboxed WebKit view with scripts off and remote images blocked until you ask for them.</p></li>
+      <li><h3>Plugins that can't phone home</h3><p>Thunderbird add-ons are JavaScript that asks you for permissions. Apple's MailKit is narrow enough that many Apple Mail plug-ins never came back after Apple dropped the old kind in macOS Sonoma. Wax plugins run in WebAssembly with no files, no network and limits on memory and time, so a plugin can sort, label and warn but can't send your mail anywhere.</p></li>
+      <li><h3>Your login stays yours</h3><p>There's no Wax account and no Wax server. Your Google sign-in lives in the macOS Keychain and Wax connects to Gmail itself. Spark keeps account credentials, encrypted, on its own servers so it can run features like Send Later, and the new Outlook for Mac connects through Microsoft's cloud.</p></li>
+      <li><h3>Open source, at no cost</h3><p>Only Wax and Thunderbird let you read every line. Wax is free under the GPL-3.0, and the plugin interface is MIT, so anyone can write and share plugins. Compare Mimestream at $49.99 a year, Airmail Pro at $49.99 a year, or Superhuman at $300 a year.</p></li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="pick">
+    <h2 id="pick">When another app is the better choice</h2>
+    <p>Wax is young, so here's where it isn't the right fit yet.</p>
+    <ul class="plain">
+      <li><strong>You don't use Gmail.</strong> Wax works with Gmail and Google Workspace only for now. Apple Mail, Thunderbird and MailMate handle any IMAP account, and Outlook is the natural pick for Microsoft accounts.</li>
+      <li><strong>You want the same app on your phone.</strong> Wax is Mac only. Apple Mail, Spark and Airmail have iPhone apps.</li>
+      <li><strong>You want a calendar in your mail app.</strong> Outlook and Thunderbird include one; Wax doesn't.</li>
+      <li><strong>You need a signed download and support.</strong> For now Wax is built from source, on Apple silicon Macs. The paid apps come signed, with support behind them.</li>
+      <li><strong>You share inboxes with a team.</strong> Spark and Superhuman have team features Wax doesn't.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="sources">
+    <h2 id="sources">Sources</h2>
+    <ul class="sources">
+      <li>Prices: <a href="https://mimestream.com/pricing">Mimestream</a>, <a href="https://sparkmailapp.com/pricing">Spark</a>, <a href="https://help.airmailapp.com/en-us/article/airmail-pro-subscription-pricing-and-plans-1xqnlwe/">Airmail</a>, <a href="https://freron.com/pricing/">MailMate</a>, <a href="https://www.getinboxzero.com/superhuman-pricing">Superhuman (Inbox Zero summary)</a>.</li>
+      <li>Mimestream: <a href="https://habr.com/en/news/737538">Habr</a>, <a href="https://sixcolors.com/?p=27895">Six Colors</a>, <a href="https://mimestream.com/blog/1.10-released">Mimestream 1.10 release notes</a>.</li>
+      <li>Spark's credentials: <a href="https://sparkmailapp.com/privacy">Spark privacy policy</a>, <a href="https://mjtsai.com/blog/2016/12/01/spark-mail-stores-credentials-in-cloud/">Michael Tsai</a>. Spark's Electron framework was read from the installed app.</li>
+      <li>New Outlook for Mac: <a href="https://kb.wisc.edu/microsoft365/page.php?id=106875">University of Wisconsin</a>, <a href="https://support.microsoft.com/en-us/Outlook/outlook-for-mac">Microsoft</a>.</li>
+      <li>Thunderbird: <a href="https://en.wikipedia.org/wiki/Mozilla_Thunderbird">Wikipedia</a>, <a href="https://developer.thunderbird.net/add-ons/about-add-ons">add-on guide</a>.</li>
+      <li>Apple Mail plug-ins: <a href="https://www.macrumors.com/2023/06/14/macos-sonoma-drops-legacy-mail-app-plug-ins">MacRumors</a>.</li>
+      <li>Still developed or not: <a href="https://tidbits.com/2024/10/22/postbox-acquired-by-em-client-ends-development/">TidBITS on Postbox</a>, <a href="https://lists.freron.com/mailmate/2026-March/018920.html">MailMate mailing list</a>, <a href="https://engadget.com/2201940/notion-mail-is-shutting-down">Engadget on Notion Mail</a>.</li>
+      <li>Memory safety: <a href="https://chromium.org/Home/chromium-security/memory-safety">Chromium</a>, <a href="https://it.slashdot.org/story/19/02/11/2019247/microsoft-70-percent-of-all-security-bugs-are-memory-safety-issues">Microsoft, via ZDNet</a>.</li>
+    </ul>
+    <p class="note">Spot something wrong or out of date? <a href="https://github.com/tekanic/wax/issues">Open an issue</a> and we'll fix it.</p>
+  </section>
+</main>
+<footer>
+  <div class="wrap">
+    <span>Wax is made by Tekanics LLC. Free and open source under the <a href="https://github.com/tekanic/wax/blob/main/LICENSE">GPL-3.0</a>.</span>
+    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a> · <a href="https://github.com/tekanic/wax#contributing">Contributing</a></span>
+  </div>
+</footer>
+</body>
+</html>

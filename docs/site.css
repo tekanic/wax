@@ -120,3 +120,30 @@ ol.steps li{margin-bottom:14px}
   .tour{gap:64px}
   .hero-shot{padding:0 14px}
 }
+
+.compare{padding-top:24px;padding-bottom:80px}
+.compare h1{margin:0;font-size:clamp(44px,6vw,64px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.compare .lede{margin:14px 0 8px;font-size:21px;color:var(--slate);max-width:36em}
+.compare section{padding:48px 0 0;border-top:0}
+.compare h2{font-size:clamp(28px,3.6vw,36px)}
+.compare section>p{max-width:42em;color:var(--slate);margin:0 0 20px}
+.compare .note{font-size:15px;color:var(--slate);max-width:48em;margin:14px 0 0}
+.table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:12px;background:var(--white)}
+.table-wrap:focus-visible{outline:3px solid var(--wax);outline-offset:3px}
+table.vs{width:100%;border-collapse:collapse;font-size:15.5px;line-height:1.4}
+table.vs th,table.vs td{text-align:left;vertical-align:top;padding:12px 14px;border-bottom:1px solid var(--rule)}
+table.vs thead th{font-size:13.5px;font-weight:700;color:var(--slate);white-space:nowrap;background:rgba(30,35,51,.03)}
+table.vs tbody th{font-weight:700;white-space:nowrap}
+table.vs tbody tr:last-child th,table.vs tbody tr:last-child td{border-bottom:0}
+table.vs td{min-width:9em}
+table.vs tr.us{background:rgba(161,29,46,.06)}
+table.vs tr.us th{color:var(--wax)}
+table.vs.nums{width:100%}
+.table-wrap.narrow{max-width:640px}
+table.vs.nums td{min-width:0;font-variant-numeric:tabular-nums}
+.compare .choices{margin-top:8px}
+ul.plain{margin:0;padding:0;list-style:none;max-width:46em}
+ul.plain li{padding:14px 0;border-bottom:1px solid var(--rule);color:var(--slate)}
+ul.plain li strong{color:var(--ink)}
+ul.sources{margin:0;padding-left:1.2em;font-size:16px;color:var(--slate);max-width:52em}
+ul.sources li{margin-bottom:8px}
