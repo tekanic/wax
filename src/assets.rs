@@ -17,11 +17,13 @@ icons!(
     "ban", "octagon-alert", "trash", "tag", "blocks-label", "chevron-left", "wand-sparkles", "sliders-horizontal", "paperclip", "file", "download", "user-plus", "reply", "reply-all", "forward",
 );
 
+const BRAND: &[(&str, &[u8])] = &[("brand/wax-wordmark.svg", include_bytes!("../assets/brand/wax-wordmark.svg"))];
+
 pub struct AppAssets;
 
 impl AssetSource for AppAssets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
-        if let Some((_, bytes)) = ICONS.iter().find(|(p, _)| *p == path) {
+        if let Some((_, bytes)) = ICONS.iter().chain(BRAND).find(|(p, _)| *p == path) {
             return Ok(Some(Cow::Borrowed(bytes)));
         }
         gpui_kit::assets::Assets.load(path)

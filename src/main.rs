@@ -43,6 +43,8 @@ mod signature;
 mod sweep;
 mod table;
 mod theme;
+mod about;
+mod splash;
 mod demo;
 mod window_state;
 mod threads;
@@ -353,6 +355,7 @@ struct MailApp {
     images_allowed: HashSet<(String, String)>,
     /// Show shortcut hints in the bottom bar (cmd-/ toggles).
     show_hints: bool,
+    splash: Option<splash::Splash>,
     bounds_gen: u64,
     width: f32,
     /// The message being written, shown in place of the reader.
@@ -494,6 +497,7 @@ impl MailApp {
             html_view: HtmlView::new(),
             images_allowed: HashSet::new(),
             show_hints: true,
+            splash: None,
             bounds_gen: 0,
             width: 1280.,
             composer: None,
@@ -595,6 +599,7 @@ impl MailApp {
             Ok("accounts") => app.open_settings(settings::Pane::Accounts, window, cx),
             _ => {}
         }
+        app.start_splash(cx);
         if demo::on() {
             app.demo_stage_later(window, cx);
         }
@@ -3592,7 +3597,7 @@ impl Render for MailApp {
         self.track_status(cx);
         let html = self
             .reading()
-            .filter(|_| self.composer.is_none() && self.pending_send.is_none() && self.after_send.is_none() && self.sweep.is_none())
+            .filter(|_| self.composer.is_none() && self.pending_send.is_none() && self.after_send.is_none() && self.sweep.is_none() && self.splash.is_none())
             .and_then(|e| e.html.clone().map(|h| (e.key(), h)));
         let own = if self.settings_view.is_some() {
             self.settings_html()
@@ -3706,6 +3711,7 @@ impl Render for MailApp {
             .on_action(cx.listener(|this, _: &TableBackTab, w, cx| this.table_tab(true, w, cx)))
             .on_action(cx.listener(|this, _: &CycleSignature, _, cx| this.cycle_signature(cx)))
             .on_action(cx.listener(|this, _: &OpenSettings, w, cx| this.open_settings(settings::Pane::Writing, w, cx)))
+            .on_action(cx.listener(|this, _: &ShowPlugins, w, cx| this.open_settings(settings::Pane::Plugins, w, cx)))
             .on_action(cx.listener(|this, _: &CloseSettings, w, cx| this.close_settings(w, cx)))
             .on_action(cx.listener(|this, _: &MenuNext, _, cx| this.menu_move(1, cx)))
             .on_action(cx.listener(|this, _: &MenuPrev, _, cx| this.menu_move(-1, cx)))
@@ -3776,6 +3782,7 @@ impl Render for MailApp {
             .when(self.row_menu.is_some(), |d| d.child(self.render_row_menu(cx)))
             .children(self.render_label_picker(cx))
             .children(self.render_command_menu(cx))
+            .children(self.render_splash())
 
     }
 }
@@ -4071,6 +4078,18 @@ fn main() {
             errlog::record("", &e);
         }
         cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.on_action(|_: &ShowAbout, cx| about::open(cx));
+        cx.set_menus(vec![Menu {
+            name: "Wax".into(),
+            items: vec![
+                MenuItem::action("About Wax", ShowAbout),
+                MenuItem::separator(),
+                MenuItem::action("Settings…", OpenSettings),
+                MenuItem::separator(),
+                MenuItem::action("Quit Wax", Quit),
+            ],
+            disabled: false,
+        }]);
 
         let options = WindowOptions {
             window_bounds: Some(window_state::restore(cx)),
@@ -4081,13 +4100,14 @@ fn main() {
             }),
             ..Default::default()
         };
-        gpui_kit::open_window(options, cx, |window, cx| {
+        let (main, _) = gpui_kit::open_window(options, cx, |window, cx| {
             let view = cx.new(|cx| MailApp::new(window, cx));
             let focus = view.read(cx).focus.clone();
             window.focus(&focus, cx);
             view
         })
         .expect("failed to open window");
+        cx.set_global(about::MainWindow(main));
         cx.activate(true);
     });
 }

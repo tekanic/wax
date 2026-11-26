@@ -70,6 +70,8 @@ actions!(
         TableBackTab,
         CycleSignature,
         OpenSettings,
+        ShowPlugins,
+        ShowAbout,
         CloseSettings,
         ToggleImportant,
         SenderKey,
