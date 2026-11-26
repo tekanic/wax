@@ -48,7 +48,7 @@ shoot() {
 }
 
 mkdir -p docs/shots
-for v in inbox light phishing reply sweep plugins newsletter; do shoot $v; done
+for v in inbox light phishing compose preview signature sweep plugins newsletter; do shoot $v; done
 
 echo "windowed $pos 1440 900" > "$home/Library/Application Support/gpui-mail/window.txt"
 env HOME="$home" WAX_DEMO=1 WAX_DEMO_VIEW=about "$bin" >/dev/null 2>&1 &

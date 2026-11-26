@@ -155,7 +155,7 @@ fn set_field(s: &mut Signature, i: usize, v: String) {
     }
 }
 
-const SAMPLE_BODY: &str = "Hi Jim,\n\nThis is how your signature will look under a message.\n\nThanks,";
+const SAMPLE_BODY: &str = "Hi Sam,\n\nThis is how your signature will look under a message.\n\nThanks,";
 
 impl MailApp {
     pub fn signature_by_id(&self, id: Option<i64>) -> Option<&Signature> {

@@ -45,12 +45,30 @@
     <div class="tour">
       <div class="stop">
         <div class="says">
-          <h3>Reply in Markdown</h3>
-          <p>Write with bold, lists, links and real tables, and Wax sends clean HTML with a plain-text copy. Quotes read like the message, not its tracking links.</p>
-          <p>Eight seconds to look it over after you send, and one key to pull it back.</p>
-          <p class="key"><kbd>r</kbd> reply · <kbd>a</kbd> reply all · <kbd>⌘</kbd><kbd>⏎</kbd> send</p>
+          <h3>Write in Markdown</h3>
+          <p>Bold, lists, links, quotes and real tables, from the toolbar or the keys you already know. Paste a range from Excel, Numbers or Google Sheets and it becomes a table; <kbd>tab</kbd> lines the columns up and numbers align right.</p>
+          <p>Wax sends clean HTML, with your Markdown as the plain-text copy, so the message reads well in any mail app. Every send waits eight seconds in case you want it back.</p>
+          <p class="key"><kbd>⌘</kbd><kbd>B</kbd> bold · <kbd>⌘</kbd><kbd>K</kbd> link · <kbd>⌘</kbd><kbd>⏎</kbd> send</p>
         </div>
-        <figure class="shot"><img src="shots/reply.webp" width="2200" height="1424" loading="lazy" alt="Writing a reply: From, To, Cc and Subject fields, a formatting bar, and the reply body in Markdown above the quoted message."></figure>
+        <figure class="shot"><img src="shots/compose.webp" width="2200" height="1424" loading="lazy" alt="A new message written in Markdown: a table of print items with aligned columns, a note, a numbered list and a link, with the Blocks panel beside it and the Work signature under it."></figure>
+      </div>
+      <div class="stop">
+        <div class="says">
+          <h3>Blocks for what you write every week</h3>
+          <p>A table, a callout, a link button, next steps, meeting times: drag a block into the message or click it to add it where you're typing.</p>
+          <p>Each block is a Markdown file in <code>~/.config/wax/blocks</code>, so you make your own in any editor. <code>{{cursor}}</code> marks where you start typing.</p>
+          <p class="key"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd> see the message as it will arrive</p>
+        </div>
+        <figure class="shot"><img src="shots/preview.webp" width="2200" height="1424" loading="lazy" alt="The same message in preview: a bordered table, the note set off as a callout, the numbered list, a link and the signature with its logo, as the recipient will see it."></figure>
+      </div>
+      <div class="stop">
+        <div class="says">
+          <h3>Signatures, designed</h3>
+          <p>Apple Mail gives you a text box to paste into. Wax gives you a designer: choose a layout with or without logos, fill in your details, pick an accent colour and font, and see it as it will arrive.</p>
+          <p>Logos travel inside the message, so they show up without anyone clicking "load images", and they can link to your site. Keep several per account, one for new mail and one for replies, and switch with a click. The signature stays apart from what you write, so switching never leaves pieces behind.</p>
+          <p>Already have one? Wax can import an HTML signature from Apple Mail, Thunderbird or a signature generator.</p>
+        </div>
+        <figure class="shot"><img src="shots/signature.webp" width="2200" height="1424" loading="lazy" alt="The signature designer: layouts named Text, Logo left, Logo on top and Two logos, fields for name, title, company, phone, email and website, and a preview of the signature under a short message."></figure>
       </div>
       <div class="stop">
         <div class="says">
@@ -196,7 +214,7 @@ brand = "Acme Bank: acmebank.com"</pre>
 <footer>
   <div class="wrap">
     <span>Wax is made by Tekanics LLC. Free and open source under the <a href="https://github.com/tekanic/wax/blob/main/LICENSE">GPL-3.0</a>.</span>
-    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a></span>
+    <span><a href="https://github.com/tekanic/wax">Source on GitHub</a> · <a href="https://github.com/tekanic/wax#contributing">Contributing</a></span>
   </div>
 </footer>
 </body>

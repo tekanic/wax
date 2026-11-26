@@ -420,13 +420,13 @@ mod tests {
         let mut d = Draft::new();
         d.to = "jim@example.com".into();
         d.subject = "Update".into();
-        d.body = "Hi Jim,\nThis is **done**.".into();
+        d.body = "Hi Sam,\nThis is **done**.".into();
         let (raw, _) = build_message(&d, "me@example.com", true, None).unwrap();
         let msg = mail_parser::MessageParser::default().parse(&raw).unwrap();
         assert!(msg.body_text(0).unwrap().contains("**done**"), "plain part keeps the Markdown");
         let html = msg.body_html(0).unwrap();
         assert!(html.contains("<strong>done</strong>"), "{html}");
-        assert!(html.contains("Hi Jim,<br>"), "{html}");
+        assert!(html.contains("Hi Sam,<br>"), "{html}");
     }
 
     #[test]

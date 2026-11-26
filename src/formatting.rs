@@ -308,8 +308,8 @@ mod tests {
 
     #[test]
     fn blocks_get_their_own_lines() {
-        let (t, at) = insert_block("Hi Jim,\nsee below", 7, "| a |");
-        assert_eq!(t, "Hi Jim,\n\n| a |\n\nsee below");
+        let (t, at) = insert_block("Hi Sam,\nsee below", 7, "| a |");
+        assert_eq!(t, "Hi Sam,\n\n| a |\n\nsee below");
         assert_eq!(&t[at..at + 5], "| a |");
         let (t, _) = insert_block("", 0, "| a |");
         assert_eq!(t, "| a |\n");

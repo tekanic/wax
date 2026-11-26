@@ -343,6 +343,38 @@ Set `WAX_SHOT_POS` to a spot on a Retina display for sharp captures.
 - `plugins/`: the bundled plugins, one crate each (`test-*` are for the host's tests)
 - `docs/`: the website, the guides and their screenshots; `src/demo.rs`: demo mode
 
+## Contributing
+
+Bug reports, ideas and pull requests are welcome.
+
+- **Reporting a bug:** open an issue with what you did, what you expected and
+  what happened. Include the version from Wax → About Wax and anything relevant
+  from Settings → Problems, with personal details removed.
+- **Before a pull request:** for anything bigger than a fix, open an issue
+  first so we can agree on the approach. Many features belong in a plugin
+  rather than the core; see [the plugin guide](docs/plugins.md).
+- **Checks:** `cargo test` passes, `scripts/build-plugins.sh` builds, and the
+  change matches the style of the code around it.
+- **Screenshots:** for visible changes, add before and after shots taken in
+  demo mode (see Development), never from your own mailbox.
+
+### AI-assisted contributions
+
+Code written with AI tools is welcome, with two conditions:
+
+1. **Say so.** The pull request names the tools and models used and which
+   parts they wrote.
+2. **Have it reviewed first.** Before opening the pull request, have the full
+   change reviewed by a new AI session (not the one that wrote it) running
+   Claude Opus 5.5 or a comparable model. Fix what it finds, and include a
+   short summary of the review in the pull request.
+
+Either way, you're responsible for the change: understand it, test it, and be
+ready to explain any line of it.
+
+By contributing, you agree that your contribution is licensed under the same
+terms as the part of the repository it changes (see below).
+
 ## License
 
 Wax is free software under the [GNU General Public License v3.0](LICENSE) or

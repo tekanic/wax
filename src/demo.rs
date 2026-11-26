@@ -296,6 +296,58 @@ fn under_home(p: &std::path::Path) -> bool {
     !home.is_empty() && home.contains("wax-demo") && p.starts_with(&home)
 }
 
+const LOGO: &[u8] = include_bytes!("../assets/demo/lumenhouse-logo.png");
+
+fn signatures() -> Result<(i64, i64)> {
+    use crate::signature::{Layout, Signature};
+    let mut work = Signature::new("Work");
+    work.layout = Layout::LogoLeft;
+    work.name = ME.into();
+    work.title = "Studio Director".into();
+    work.company = "Lumen House Studio".into();
+    work.phone = "+1 (555) 014-2290".into();
+    work.email = WORK.into();
+    work.website = "lumenhouse.studio".into();
+    work.accent = 0xc2571a;
+    work.logo = Some(("image/png".into(), LOGO.to_vec()));
+    work.logo_width = 64;
+    work.logo_link = "https://lumenhouse.studio".into();
+    work.social_label = "Instagram".into();
+    work.social_url = "https://instagram.com/lumenhouse.studio".into();
+    work.account = WORK.into();
+    let work = crate::files::save_signature(&work)?;
+    let mut short = Signature::new("Short");
+    short.name = ME.into();
+    short.company = "Lumen House Studio".into();
+    short.email = WORK.into();
+    short.accent = 0xc2571a;
+    short.account = WORK.into();
+    let short = crate::files::save_signature(&short)?;
+    Ok((work, short))
+}
+
+const COMPOSE_BODY: &str = "Hi Priya,
+
+Here's what's left before the spring catalogue goes to print.
+
+| Item              |   Qty | Notes                |
+| ----------------- | ----: | -------------------- |
+| Catalogue, 48 pp  | 2,000 | matte cover          |
+| Price list insert | 2,000 | folded to fit        |
+| Hard proofs       |     3 | back Friday          |
+
+> **Note:** Jordan needs final files by Thursday noon to hold the press slot.
+
+**Next steps**
+
+1. Sign off the cover
+2. Send me the final price list
+3. Confirm the delivery address
+
+**[Open the proofs](https://lumenhouse.studio/proofs)**
+
+Thanks!";
+
 pub fn make() -> Result<()> {
     let config = crate::files::config_dir();
     let data = crate::files::data_dir();
@@ -308,14 +360,16 @@ pub fn make() -> Result<()> {
     std::fs::create_dir_all(&config)?;
     std::fs::create_dir_all(&data)?;
 
+    let (work_sig, short_sig) = signatures()?;
     for (order, (email, badge)) in [(WORK, "L"), (HOME, "")].into_iter().enumerate() {
+        let mine = email == WORK;
         crate::accounts::save(&crate::accounts::Account {
             email: email.to_string(),
             name: ME.to_string(),
             auth: crate::accounts::Auth::Google,
             order: order as i64 + 1,
-            sig_new: None,
-            sig_reply: None,
+            sig_new: mine.then_some(work_sig),
+            sig_reply: mine.then_some(short_sig),
             color: None,
             badge: badge.to_string(),
         })?;
@@ -326,6 +380,7 @@ pub fn make() -> Result<()> {
     )?;
     let mut settings = crate::settings::Settings::default();
     settings.theme_mode = crate::theme::Mode::Dark;
+    settings.mono = false;
     settings.save()?;
     std::fs::write(data.join("window.txt"), "windowed 80 80 1440 900\n")?;
 
@@ -478,6 +533,20 @@ impl MailApp {
                     self.open_composer(d, window, cx);
                 }
             }
+            "compose" | "preview" => {
+                self.settings.blocks_open = true;
+                let mut d = compose::Draft::new();
+                d.account = WORK.to_string();
+                d.to = "Priya Shah <priya@lumenhouse.studio>".into();
+                d.subject = "Spring catalogue: what's left before print".into();
+                d.body = COMPOSE_BODY.into();
+                let d = self.with_defaults(d);
+                self.open_composer(d, window, cx);
+                if v == "preview" {
+                    self.toggle_preview(window, cx);
+                }
+            }
+            "signature" => self.open_settings(settings::Pane::Signatures, window, cx),
             "sweep" => self.open_sweep(window, cx),
             "plugins" => self.open_settings(settings::Pane::Plugins, window, cx),
             "settings" => self.open_settings(settings::Pane::Writing, window, cx),
