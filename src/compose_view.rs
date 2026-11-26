@@ -91,13 +91,19 @@ impl ComposerState {
     pub fn focus_first<T: 'static>(&self, window: &mut Window, cx: &mut Context<T>) {
         match self.kind {
             Kind::Reply | Kind::ReplyAll => {
-                self.body.update(cx, |s, cx| s.set_cursor_position(Position::new(0, 0), window, cx));
+                self.body.update(cx, |s, cx| {
+                    s.focus(window, cx);
+                    s.set_cursor_position(Position::new(0, 0), window, cx);
+                });
             }
             Kind::New | Kind::Forward => {
                 if self.to.read(cx).value().is_empty() {
                     self.to.update(cx, |s, cx| s.focus(window, cx));
                 } else {
-                    self.body.update(cx, |s, cx| s.set_cursor_position(Position::new(0, 0), window, cx));
+                    self.body.update(cx, |s, cx| {
+                        s.focus(window, cx);
+                        s.set_cursor_position(Position::new(0, 0), window, cx);
+                    });
                 }
             }
         }

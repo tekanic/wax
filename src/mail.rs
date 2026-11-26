@@ -559,6 +559,10 @@ impl Session {
             Some(t) if !msg.text_part(0).map(|p| p.is_text_html()).unwrap_or(true) => t.trim().to_string(),
             _ => msg.body_html(0).map(|h| html_to_text(&h)).unwrap_or_default(),
         };
+        let quoted = match msg.html_part(0).filter(|p| p.is_text_html()).and_then(|_| msg.body_html(0)) {
+            Some(h) => readable_text(&html_for_quote(&h)),
+            None => readable_text(&text),
+        };
         Ok(crate::compose::Original {
             from: list(msg.from()),
             reply_to: list(msg.reply_to()),
@@ -569,6 +573,7 @@ impl Session {
             references,
             subject: msg.subject().unwrap_or("").to_string(),
             date,
+            quoted,
             files: {
                 let html = msg.html_part(0).filter(|p| p.is_text_html()).and_then(|_| msg.body_html(0)).map(|h| h.into_owned());
                 attachment_parts(&msg, html.as_deref())
@@ -1385,6 +1390,47 @@ fn decode_entities(s: &str) -> String {
     s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
 }
 
+fn html_for_quote(html: &str) -> String {
+    html2text::config::with_decorator(html2text::render::TrivialDecorator::new())
+        .raw_mode(true)
+        .string_from_read(html.as_bytes(), 78)
+        .unwrap_or_default()
+}
+
+pub fn readable_text(text: &str) -> String {
+    const INVISIBLE: [char; 6] = ['\u{200b}', '\u{200c}', '\u{200d}', '\u{2060}', '\u{feff}', '\u{00ad}'];
+    const ENTITIES: [(&str, &str); 9] = [
+        ("&zwnj;", ""),
+        ("&zwj;", ""),
+        ("&shy;", ""),
+        ("&#8203;", ""),
+        ("&#847;", ""),
+        ("&nbsp;", " "),
+        ("&amp;", "&"),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+    ];
+    let mut s: String = text.chars().filter(|c| !INVISIBLE.contains(c) && *c != '\u{034f}').collect();
+    for (from, to) in ENTITIES {
+        s = s.replace(from, to);
+    }
+    let mut out: Vec<&str> = Vec::new();
+    for line in s.lines().map(str::trim_end) {
+        let blank = line.trim().is_empty() || line.trim().chars().all(|c| matches!(c, '|' | '-' | '─' | '_'));
+        if blank {
+            if out.last().is_some_and(|l| !l.is_empty()) {
+                out.push("");
+            }
+        } else {
+            out.push(line);
+        }
+    }
+    while out.last().is_some_and(|l| l.is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
 fn html_to_text(html: &str) -> String {
     html2text::from_read(html.as_bytes(), 100)
         .unwrap_or_else(|_| "(could not render HTML)".into())
@@ -1419,6 +1465,24 @@ pub fn check() -> Result<()> {
     }
     println!("OK in {:?}", started.elapsed());
     Ok(())
+}
+
+#[cfg(test)]
+mod quote_tests {
+    use super::{html_for_quote, readable_text};
+
+    #[test]
+    fn quotes_read_like_the_message() {
+        let plain = "&zwnj; &zwnj;\u{200c} &nbsp;\n\n\nGrab savings &amp; more\n|\n\n\nShop\n";
+        assert_eq!(readable_text(plain), "Grab savings & more\n\nShop");
+        let html = r#"<p>Hi <b>there</b>,</p><p><a href="https://click.example.com/u/?qs=very-long-tracking-token">View online</a></p><table><tr><td>Shop</td><td>Deals</td></tr></table>"#;
+        let q = readable_text(&html_for_quote(html));
+        assert!(q.contains("Hi there,"), "{q}");
+        assert!(q.contains("View online"), "{q}");
+        assert!(!q.contains("click.example.com"), "links stay out of the quote: {q}");
+        assert!(q.contains("Shop") && q.contains("Deals"), "{q}");
+        assert!(!q.contains('[') && !q.contains('─') && !q.contains('│'), "no link brackets or table borders: {q}");
+    }
 }
 
 #[cfg(test)]

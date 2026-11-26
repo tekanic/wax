@@ -289,3 +289,43 @@ mod tests {
         assert_eq!(recipients_line(&[p("Smith, Dana", "d@x.com"), p("Ward,", "w@x.com")]), "To: Dana, Ward");
     }
 }
+
+fn reader_button(id: &'static str, icon: &'static str, label: &'static str, key: &'static str, compact: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap_1p5()
+        .h(px(28.))
+        .px_2p5()
+        .rounded_md()
+        .border_1()
+        .border_color(pal().border)
+        .text_sm()
+        .text_color(pal().text)
+        .cursor_pointer()
+        .hover(|d| d.bg(pal().hover))
+        .child(svg().path(icon).size(px(14.)).flex_none().text_color(pal().subtle))
+        .child(label)
+        .when(!compact, |d| d.child(div().text_xs().font_family("Menlo").text_color(pal().muted).child(key)))
+}
+
+impl MailApp {
+    pub fn render_reader_actions(&self, e: &Envelope, cx: &mut Context<Self>) -> Div {
+        let compact = self.compact();
+        let mut row = div().flex().flex_wrap().items_center().gap_2();
+        if e.mailbox == mail::DRAFTS && !self.unified {
+            return row.child(action_button("edit-draft", "Edit  ⏎", true).on_click(cx.listener(|this, _, w, cx| this.open_draft(&OpenDraft, w, cx))));
+        }
+        row = row
+            .child(reader_button("reply", "icons/reply.svg", "Reply", "r", compact).on_click(cx.listener(|this, _, w, cx| this.respond(Kind::Reply, w, cx))))
+            .child(
+                reader_button("reply-all", "icons/reply-all.svg", "Reply all", "a", compact)
+                    .on_click(cx.listener(|this, _, w, cx| this.respond(Kind::ReplyAll, w, cx))),
+            )
+            .child(reader_button("forward", "icons/forward.svg", "Forward", "f", compact).on_click(cx.listener(|this, _, w, cx| this.respond(Kind::Forward, w, cx))));
+        row.children(self.render_command_buttons(e, cx))
+    }
+}
+

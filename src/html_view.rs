@@ -89,6 +89,7 @@ impl HtmlView {
     pub fn hide(&mut self) {
         if let (Some(webview), true) = (&self.webview, self.visible) {
             webview.set_visible(false).ok();
+            webview.focus_parent().ok();
             self.visible = false;
         }
     }

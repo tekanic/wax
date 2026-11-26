@@ -1117,7 +1117,7 @@ impl MailApp {
         if self.composer.is_some() {
             return;
         }
-        let Some(e) = self.envelopes.get(self.selected) else { return };
+        let Some(e) = self.reading() else { return };
         // From All Inboxes, answer from the message's own account.
         let account = self.account_of(e).to_string();
         let (mailbox, id) = (e.mailbox.clone(), e.id.clone());
@@ -3493,15 +3493,9 @@ impl MailApp {
                                             d.child(div().truncate().text_xs().text_color(pal().muted).child(conversation::recipients_line(&e.to)))
                                         }),
                                 )
-                                .children(self.render_command_buttons(e, cx))
-                                .when(e.mailbox == mail::DRAFTS && !self.unified, |d| {
-                                    d.child(
-                                        action_button("edit-draft", "Edit  ⏎", true)
-                                            .on_click(cx.listener(|this, _, w, cx| this.open_draft(&OpenDraft, w, cx))),
-                                    )
-                                })
                                 .child(div().flex_none().text_xs().text_color(pal().muted).child(e.date.clone())),
                         )
+                        .child(self.render_reader_actions(e, cx))
                         .children(self.render_attachments(e, cx))
                         .child(div().h(px(1.)).bg(pal().border));
         if has_html {

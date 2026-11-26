@@ -107,6 +107,7 @@ pub struct Original {
     /// Human date, e.g. "Mon, Nov 23, 2026 at 2:37 PM".
     pub date: String,
     pub text: String,
+    pub quoted: String,
     /// (name, bytes) of attached files.
     pub files: Vec<(String, Vec<u8>)>,
 }
@@ -145,7 +146,7 @@ pub fn prefill(kind: Kind, orig: &Original, mine: &[String]) -> Draft {
             d.to = join_addresses(&to);
             d.cc = join_addresses(&cc);
             d.subject = prefixed("Re:", &orig.subject);
-            d.body = format!("\n\nOn {}, {} wrote:\n{}", orig.date, sender, quote(&orig.text));
+            d.body = format!("\n\nOn {}, {} wrote:\n{}", orig.date, sender, quote(&orig.quoted));
             d.in_reply_to = orig.message_id.clone();
             d.references = orig.references.clone();
             if let Some(id) = &orig.message_id {
@@ -161,7 +162,7 @@ pub fn prefill(kind: Kind, orig: &Original, mine: &[String]) -> Draft {
                 orig.date,
                 orig.subject,
                 join_addresses(&orig.to),
-                orig.text
+                orig.quoted
             );
         }
     }
@@ -537,6 +538,7 @@ mod tests {
             subject: "Plans".into(),
             date: "Mon".into(),
             text: "hi\n\nthere".into(),
+            quoted: "hi\n\nthere".into(),
             ..Default::default()
         };
         let d = prefill(Kind::ReplyAll, &orig, &["me@g.com".to_string()]);

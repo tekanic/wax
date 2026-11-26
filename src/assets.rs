@@ -14,7 +14,7 @@ macro_rules! icons {
 
 icons!(
     "inbox", "book-open", "receipt", "star", "flag", "send", "file-pen", "mails",
-    "ban", "octagon-alert", "trash", "tag", "blocks-label", "chevron-left", "wand-sparkles", "sliders-horizontal", "paperclip", "file", "download", "user-plus",
+    "ban", "octagon-alert", "trash", "tag", "blocks-label", "chevron-left", "wand-sparkles", "sliders-horizontal", "paperclip", "file", "download", "user-plus", "reply", "reply-all", "forward",
 );
 
 pub struct AppAssets;
