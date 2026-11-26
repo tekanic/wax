@@ -446,6 +446,12 @@ impl MailApp {
                 self.use_theme(false, cx);
                 self.demo_pick("Re: Spring catalogue proofs", cx);
             }
+            "about" => {
+                self.settings.theme_mode = crate::theme::Mode::Light;
+                self.use_theme(false, cx);
+                self.demo_pick("Re: Spring catalogue proofs", cx);
+                cx.defer(crate::about::open);
+            }
             "phishing" => self.demo_pick("Your account has been limited", cx),
             "newsletter" => self.demo_pick("Rates, rails and rain", cx),
             "unified" => {

@@ -20,7 +20,7 @@
 <body>
 <header class="wrap top">
   <a class="mark" href="./" aria-label="Wax home"><img src="wax-icon-1024.png" alt=""><span class="word">wax</span></a>
-  <nav aria-label="Main"><a href="#tour">Tour</a><a href="guide/">Guide</a><a href="plugins/">Plugins</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
+  <nav aria-label="Main"><a href="#tour">Tour</a><a href="#design">Design</a><a href="guide/">Guide</a><a href="plugins/">Plugins</a><a href="https://github.com/tekanic/wax">GitHub</a></nav>
 </header>
 
 <main>
@@ -97,6 +97,14 @@
         </div>
         <figure class="shot"><img src="shots/plugins.webp" width="2200" height="1424" loading="lazy" alt="Settings, Plugins: Filter rules, Phishing warnings, Screener, Snooze and follow-up and Sweep, each listing what it asks for, with On and Off switches."></figure>
       </div>
+      <div class="stop">
+        <div class="says">
+          <h3>Yours to read and change</h3>
+          <p>Wax is free and open source under the GPL-3.0. About Wax shows the version you're running and opens your settings file, a plain text file you can edit by hand.</p>
+          <p><a href="https://github.com/tekanic/wax">Read the code</a></p>
+        </div>
+        <figure class="shot window"><img src="shots/about.webp" width="932" height="972" loading="lazy" alt="The About Wax window: the red wax seal icon, the wax wordmark, Version 0.1.0, the line A small mail app. Everything beyond mail is a plugin, and buttons to open the settings file and browse plugins."></figure>
+      </div>
     </div>
   </div>
 </section>
@@ -149,6 +157,24 @@ morning = 8
 label = "Suspicious"
 trust = "mycompany.com"
 brand = "Acme Bank: acmebank.com"</pre>
+  </div>
+</section>
+
+<section id="design">
+  <div class="wrap">
+    <h2>Why it's built this way</h2>
+    <p class="intro">Wax makes a few choices on purpose. Here is each one and the reason for it.</p>
+    <ul class="choices">
+      <li><h3>Native, not a web page</h3><p>Wax is written in Rust on GPUI, the framework Zed is drawn with. There's no Electron and no bundled browser, so scrolling and resizing keep up with your display and the app is a small native binary. The one web view is the one that shows HTML mail, and it's locked down.</p></li>
+      <li><h3>A small core, and plugins for the rest</h3><p>The core reads, writes and files mail. The Screener, Snooze, the Sweep, phishing warnings and filter rules are plugins built on the same interface anyone can use, so every opinion about how you should handle your mail can be switched off or replaced.</p></li>
+      <li><h3>Plugins get only what you grant</h3><p>Each plugin runs in WebAssembly with no files, no network, 64&nbsp;MB of memory and a time limit. It says in plain words what it needs to see and do, and anything beyond that is refused. One that keeps running over its time is switched off. Plugins see new mail before you do, so a message the Screener holds back never flashes into your Inbox.</p></li>
+      <li><h3>Every message is untrusted</h3><p>HTML mail opens in a sandboxed WebKit view where scripts never run. Remote images and tracking pixels wait until you load them, and links open in your browser, not inside Wax.</p></li>
+      <li><h3>Fast because it's local</h3><p>Every header is cached on your Mac in SQLite, so folders open at once, search covers mail you haven't opened, and reading works offline. The cache holds only what can be fetched from Gmail again, plus your unsent drafts.</p></li>
+      <li><h3>No Wax account, no Wax server</h3><p>Wax talks to Gmail and Google sign-in directly. Your tokens stay in the macOS Keychain. Apart from images you choose to load, the only servers Wax contacts are Google's.</p></li>
+      <li><h3>Settings are text files</h3><p>Accounts, rules, signatures, keys and themes live in <code>~/.config/wax</code>. Edit them in any editor and Wax picks up the change when you save; back them up or keep them in git. Themes use Zed's format, so Zed's themes work as they are.</p></li>
+      <li><h3>Write in Markdown, send real email</h3><p>You write in Markdown and Wax sends clean HTML with the plain text alongside. Every send waits eight seconds so you can take it back.</p></li>
+      <li><h3>GPL for the app, MIT for plugins</h3><p>The app is GPL-3.0, so it stays open. The plugin interface is MIT, so a plugin can use any licence you like.</p></li>
+    </ul>
   </div>
 </section>
 

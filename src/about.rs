@@ -123,8 +123,17 @@ pub fn open(cx: &mut App) {
         }
     }
     let size = size(px(420.), px(440.));
+    let over = cx
+        .try_global::<MainWindow>()
+        .map(|m| m.0)
+        .and_then(|main| main.update(cx, |_, window, cx| (window.bounds(), window.display(cx).map(|d| d.id()))).ok());
+    let bounds = match over {
+        Some((main, _)) => Bounds::new(main.center() - point(size.width / 2., size.height / 2.), size),
+        None => Bounds::centered(None, size, cx),
+    };
     let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size, cx))),
+        display_id: over.and_then(|(_, d)| d),
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions { title: Some("About Wax".into()), appears_transparent: true, ..Default::default() }),
         is_resizable: false,
         is_minimizable: false,
