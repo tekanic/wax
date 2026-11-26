@@ -4,7 +4,7 @@ Wax keeps its core small. Features like the Sweep and Filter rules are plugins:
 WebAssembly components that Wax runs in a sandbox. This guide takes you from an
 empty folder to a working plugin, then covers the whole interface.
 
-- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.5.0`
+- Interface: [`wit/plugin.wit`](../wit/plugin.wit), package `wax:plugin@0.6.0`
 - Host: [`src/wasm_host.rs`](../src/wasm_host.rs)
 - Examples: [`plugins/sweep`](../plugins/sweep) (a sender view),
   [`plugins/filter-rules`](../plugins/filter-rules) and [`plugins/screener`](../plugins/screener) (act on new mail),
@@ -182,7 +182,8 @@ before showing new mail, so keep `on-message-received` quick.
 | `arrived` | New mail, before it's shown | All you're granted |
 | `existing` | The first sweep of mail already in your folders | `add-label`, `warn` |
 | `opened` | A message is opened that this version of the plugin hasn't checked (in any folder, Spam included) | `add-label`, `warn` |
-| `not-spam` | You move a message out of Spam; labels go on before it moves | `add-label`, `warn` |
+| `not-spam` | You move a message out of Spam, or let its sender back in from Screened Out; labels go on before it moves | `add-label`, `warn` |
+| `marked-spam` | You report a message as spam (`!`) or block its sender | none: it's for learning |
 
 For anything but `arrived`, Wax quietly drops every other action, so an old
 message is never moved or archived by a plugin. Plugins that only sort new
@@ -202,6 +203,9 @@ version rechecks everything.
 above the message whenever it's opened, in any folder. It needs no permission.
 
 [`plugins/phishing`](../plugins/phishing) uses all of this.
+[`plugins/spam`](../plugins/spam) learns from `marked-spam` and `not-spam`,
+keeps what it learned in storage, and moves new mail to `[Gmail]/Spam` once it
+is sure.
 
 [`plugins/screener`](../plugins/screener) is a complete example: it holds mail
 from strangers in the Lobby using `knows-sender`, and remembers when each
@@ -217,6 +221,7 @@ account was switched on in storage.
 | `read-bodies` | Call `read-message` and `message-text` for the new mail being handled | Works |
 | `network` | Call `http-get` for hosts in `network-hosts` | Answers "not available yet" |
 | `compose` | Return `open-draft` | Not carried out yet |
+| `read-drafts` | Get `check-draft` calls with the message being written | Works |
 
 Ask for the least you need. Settings shows each request in plain words, and an
 action you weren't granted is refused and reported.
@@ -257,6 +262,21 @@ All live in `wax::plugin::host`.
 `config.toml` is yours to define; Wax doesn't parse it. The built-in plugins use
 one setting per line with `#` comments. That's a good habit: people edit these
 files by hand.
+
+## Checking what you write
+
+A plugin granted `read-drafts` gets `check-draft(text)` with the message's
+Markdown a moment after you stop typing. Return a `draft-issue` for each thing
+worth a look: `start` and `end` are byte offsets into `text`, `kind` is
+`spelling` or `grammar`, `message` is shown when it's pointed at, and
+`suggestions` are replacements, best first. Wax shows them under the message;
+clicking one replaces that span, and a spelling issue can be added to
+`~/.config/wax/dictionary.txt`, which Wax checks before showing anything.
+Names of the people the message is addressed to never count as typos. Return an
+empty list if you don't check drafts.
+
+[`plugins/spelling`](../plugins/spelling) carries a whole English dictionary
+inside its `.wasm`, suggests fixes for typos, and catches a few grammar slips.
 
 ## Commands
 
@@ -357,10 +377,13 @@ scripts/build-plugins.sh sweep && cargo test wasm_host
 
 ## Versions
 
-The interface is versioned (`wax:plugin@0.5.0`) and still changing: a plugin
+The interface is versioned (`wax:plugin@0.6.0`) and still changing: a plugin
 built against one version won't load in a Wax built with another. When it
 changes, rebuild against the new `wit/plugin.wit`.
 
+- **v0.6** added `check-draft` and the `read-drafts` permission, the
+  `marked-spam` reason, and `not-spam` for senders let back in from Screened
+  Out.
 - **v0.5** gave `on-message-received` a `check-reason` (`arrived`, `existing`,
   `opened`, `not-spam`), added the `warn` action and the manifest's
   `scan-existing`, so a plugin can check mail that's already there.

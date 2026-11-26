@@ -47,10 +47,10 @@
         <div class="says">
           <h3>Write in Markdown</h3>
           <p>Bold, lists, links, quotes and real tables, from the toolbar or the keys you already know. Paste a range from Excel, Numbers or Google Sheets and it becomes a table; <kbd>tab</kbd> lines the columns up and numbers align right.</p>
-          <p>Wax sends clean HTML, with your Markdown as the plain-text copy, so the message reads well in any mail app. Every send waits eight seconds in case you want it back.</p>
+          <p>The spelling plugin points out typos and slips as you go, with the fix one click away. Wax sends clean HTML, with your Markdown as the plain-text copy, and every send waits eight seconds in case you want it back.</p>
           <p class="key"><kbd>⌘</kbd><kbd>B</kbd> bold · <kbd>⌘</kbd><kbd>K</kbd> link · <kbd>⌘</kbd><kbd>⏎</kbd> send</p>
         </div>
-        <figure class="shot"><img src="shots/compose.webp" width="2200" height="1424" loading="lazy" alt="A new message written in Markdown: a table of print items with aligned columns, a note, a numbered list and a link, with the Blocks panel beside it and the Work signature under it."></figure>
+        <figure class="shot"><img src="shots/compose.webp" width="2200" height="1424" loading="lazy" alt="A new message written in Markdown: a table of print items with aligned columns, a note, a numbered list and a link, with the Blocks panel beside it, a spelling fix (neds to needs) under it, and the Work signature."></figure>
       </div>
       <div class="stop">
         <div class="says">
@@ -113,7 +113,7 @@
           <p>Each plugin says what it needs in plain words and gets nothing until you switch it on. They run sandboxed with no files or network.</p>
           <p><a href="plugins/">Write your own</a></p>
         </div>
-        <figure class="shot"><img src="shots/plugins.webp" width="2200" height="1424" loading="lazy" alt="Settings, Plugins: Filter rules, Phishing warnings, Screener, Snooze and follow-up and Sweep, each listing what it asks for, with On and Off switches."></figure>
+        <figure class="shot"><img src="shots/plugins.webp" width="2200" height="1424" loading="lazy" alt="Settings, Plugins: Filter rules, Phishing warnings, Screener, Snooze and follow-up, Spam filter, Spelling and grammar and Sweep, each listing what it asks for, with On and Off switches."></figure>
       </div>
       <div class="stop">
         <div class="says">
@@ -147,7 +147,7 @@
     <h2 id="keys-h">Hands stay on the keys</h2>
     <p class="intro">A few of the defaults. Change any of them in <code>keymap.toml</code>; the <a href="guide/#keyboard">guide</a> lists them all.</p>
     <ul class="keys">
-      <li><kbd>j</kbd><kbd>k</kbd> move</li><li><kbd>e</kbd> archive</li><li><kbd>#</kbd> delete</li><li><kbd>r</kbd> reply</li><li><kbd>a</kbd> reply all</li><li><kbd>f</kbd> forward</li><li><kbd>l</kbd> label</li><li><kbd>z</kbd> snooze</li><li><kbd>x</kbd> select</li><li><kbd>s</kbd> star</li><li><kbd>g</kbd> <kbd>i</kbd> go to Inbox</li><li><kbd>g</kbd> <kbd>w</kbd> the Sweep</li><li><kbd>/</kbd> search</li>
+      <li><kbd>j</kbd><kbd>k</kbd> move</li><li><kbd>e</kbd> archive</li><li><kbd>#</kbd> delete</li><li><kbd>!</kbd> report spam</li><li><kbd>r</kbd> reply</li><li><kbd>a</kbd> reply all</li><li><kbd>f</kbd> forward</li><li><kbd>l</kbd> label</li><li><kbd>z</kbd> snooze</li><li><kbd>x</kbd> select</li><li><kbd>s</kbd> star</li><li><kbd>g</kbd> <kbd>i</kbd> go to Inbox</li><li><kbd>g</kbd> <kbd>w</kbd> the Sweep</li><li><kbd>/</kbd> search</li>
     </ul>
   </div>
 </section>
@@ -162,9 +162,11 @@
         <li><strong>Screener</strong><span>A first email from someone new waits in the Lobby until you let them in.</span></li>
         <li><strong>Snooze</strong><span>Puts a message away until the day it matters, and reminds you when nobody has replied.</span></li>
         <li><strong>Phishing</strong><span>Flags lookalike senders and links that don't go where they say, with the reasons above the message.</span></li>
+        <li><strong>Spam filter</strong><span>Learns from what you report, block and rescue, then moves the spam that gets past Gmail, saying why.</span></li>
+        <li><strong>Spelling</strong><span>Typos, repeated words and a/an slips, with one-click fixes under the message. Your dictionary is a text file.</span></li>
         <li><strong>Filter rules</strong><span>One line per rule: label, move or star new mail by sender or subject.</span></li>
       </ul>
-      <p class="next">Next: a spam filter that learns from what you move, spelling and grammar while you write, and an MCP server so your AI assistant can search and draft with the access you allow.</p>
+      <p class="next">Next: an MCP server so your AI assistant can search and draft with the access you allow, and AI summaries and a morning brief that run with your own key.</p>
       <p class="more"><a href="plugins/">Read the plugin guide</a></p>
     </div>
     <pre><span class="c"># ~/.config/wax/plugins/snooze/config.toml</span>

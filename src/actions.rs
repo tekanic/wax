@@ -38,6 +38,7 @@ pub enum MsgAction {
     Archive,
     ToInbox,
     Delete,
+    ReportSpam,
     SenderReading,
     SenderRecords,
     BlockSender,
@@ -199,6 +200,7 @@ impl MailApp {
             MsgAction::Archive => self.bulk(BulkKind::Archive, cx),
             MsgAction::ToInbox => self.bulk(BulkKind::ToInbox, cx),
             MsgAction::Delete => self.bulk(BulkKind::Delete, cx),
+            MsgAction::ReportSpam => self.bulk(BulkKind::Spam, cx),
             MsgAction::SenderReading => self.decide_sender_of_selected(sweep::READING, cx),
             MsgAction::SenderRecords => self.decide_sender_of_selected(sweep::RECORDS, cx),
             MsgAction::BlockSender => self.decide_sender_of_selected(sweep::SCREENED, cx),
@@ -437,6 +439,9 @@ impl MailApp {
             },
             "⌫",
         ));
+        if !matches!(f, Folder::Spam | Folder::Trash | Folder::Sent | Folder::Drafts) {
+            v.push(danger(ReportSpam, "Report spam", "!"));
+        }
         let email = e.from_email.to_lowercase();
         if n == 1 && !email.is_empty() && !matches!(f, Folder::Sent | Folder::Drafts) {
             let rule = self.rules.get(&email).map(String::as_str);

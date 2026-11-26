@@ -109,6 +109,8 @@ code span.wa { color: #da4453; } /* Warning */
     <li><a href="#actions" id="toc-actions">Actions</a></li>
     <li><a href="#host-functions" id="toc-host-functions">Host
     functions</a></li>
+    <li><a href="#checking-what-you-write"
+    id="toc-checking-what-you-write">Checking what you write</a></li>
     <li><a href="#commands" id="toc-commands">Commands</a></li>
     <li><a href="#sender-views" id="toc-sender-views">Sender
     views</a></li>
@@ -128,7 +130,7 @@ the whole interface.</p>
 <ul>
 <li>Interface: <a
 href="https://github.com/tekanic/wax/blob/main/wit/plugin.wit"><code>wit/plugin.wit</code></a>,
-package <code>wax:plugin@0.5.0</code></li>
+package <code>wax:plugin@0.6.0</code></li>
 <li>Host: <a
 href="https://github.com/tekanic/wax/blob/main/src/wasm_host.rs"><code>src/wasm_host.rs</code></a></li>
 <li>Examples: <a
@@ -362,8 +364,15 @@ saying why it's being called:</p>
 </tr>
 <tr>
 <td><code>not-spam</code></td>
-<td>You move a message out of Spam; labels go on before it moves</td>
+<td>You move a message out of Spam, or let its sender back in from
+Screened Out; labels go on before it moves</td>
 <td><code>add-label</code>, <code>warn</code></td>
+</tr>
+<tr>
+<td><code>marked-spam</code></td>
+<td>You report a message as spam (<code>!</code>) or block its
+sender</td>
+<td>none: it's for learning</td>
 </tr>
 </tbody>
 </table>
@@ -385,7 +394,11 @@ an amber ⚠ banner above the message whenever it's opened, in any folder.
 It needs no permission.</p>
 <p><a
 href="https://github.com/tekanic/wax/tree/main/plugins/phishing"><code>plugins/phishing</code></a>
-uses all of this.</p>
+uses all of this. <a
+href="https://github.com/tekanic/wax/tree/main/plugins/spam"><code>plugins/spam</code></a>
+learns from <code>marked-spam</code> and <code>not-spam</code>, keeps
+what it learned in storage, and moves new mail to
+<code>[Gmail]/Spam</code> once it is sure.</p>
 <p><a
 href="https://github.com/tekanic/wax/tree/main/plugins/screener"><code>plugins/screener</code></a>
 is a complete example: it holds mail from strangers in the Lobby using
@@ -433,6 +446,12 @@ new mail being handled</td>
 <td><code>compose</code></td>
 <td>Return <code>open-draft</code></td>
 <td>Not carried out yet</td>
+</tr>
+<tr>
+<td><code>read-drafts</code></td>
+<td>Get <code>check-draft</code> calls with the message being
+written</td>
+<td>Works</td>
 </tr>
 </tbody>
 </table>
@@ -582,6 +601,23 @@ last 90 days)</td>
 <p><code>config.toml</code> is yours to define; Wax doesn't parse it.
 The built-in plugins use one setting per line with <code>#</code>
 comments. That's a good habit: people edit these files by hand.</p>
+<h2 id="checking-what-you-write">Checking what you write</h2>
+<p>A plugin granted <code>read-drafts</code> gets
+<code>check-draft(text)</code> with the message's Markdown a moment
+after you stop typing. Return a <code>draft-issue</code> for each thing
+worth a look: <code>start</code> and <code>end</code> are byte offsets
+into <code>text</code>, <code>kind</code> is <code>spelling</code> or
+<code>grammar</code>, <code>message</code> is shown when it's pointed
+at, and <code>suggestions</code> are replacements, best first. Wax shows
+them under the message; clicking one replaces that span, and a spelling
+issue can be added to <code>~/.config/wax/dictionary.txt</code>, which
+Wax checks before showing anything. Names of the people the message is
+addressed to never count as typos. Return an empty list if you don't
+check drafts.</p>
+<p><a
+href="https://github.com/tekanic/wax/tree/main/plugins/spelling"><code>plugins/spelling</code></a>
+carries a whole English dictionary inside its <code>.wasm</code>,
+suggests fixes for typos, and catches a few grammar slips.</p>
 <h2 id="commands">Commands</h2>
 <p>A command acts on the selected message. Wax offers it as a key in the
 message list and, with <code>in-message-toolbar</code>, a button in the
@@ -688,11 +724,15 @@ fuel five times in a row, ran out of memory, or panicked. A Rust panic
 is a trap.</li>
 </ul>
 <h2 id="versions">Versions</h2>
-<p>The interface is versioned (<code>wax:plugin@0.5.0</code>) and still
+<p>The interface is versioned (<code>wax:plugin@0.6.0</code>) and still
 changing: a plugin built against one version won't load in a Wax built
 with another. When it changes, rebuild against the new
 <code>wit/plugin.wit</code>.</p>
 <ul>
+<li><strong>v0.6</strong> added <code>check-draft</code> and the
+<code>read-drafts</code> permission, the <code>marked-spam</code>
+reason, and <code>not-spam</code> for senders let back in from Screened
+Out.</li>
 <li><strong>v0.5</strong> gave <code>on-message-received</code> a
 <code>check-reason</code> (<code>arrived</code>, <code>existing</code>,
 <code>opened</code>, <code>not-spam</code>), added the <code>warn</code>

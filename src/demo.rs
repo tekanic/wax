@@ -328,15 +328,15 @@ fn signatures() -> Result<(i64, i64)> {
 
 const COMPOSE_BODY: &str = "Hi Priya,
 
-Here's what's left before the spring catalogue goes to print.
+Here's what's left before the spring catalog goes to print.
 
 | Item              |   Qty | Notes                |
 | ----------------- | ----: | -------------------- |
-| Catalogue, 48 pp  | 2,000 | matte cover          |
+| Catalog, 48 pp    | 2,000 | matte cover          |
 | Price list insert | 2,000 | folded to fit        |
 | Hard proofs       |     3 | back Friday          |
 
-> **Note:** Jordan needs final files by Thursday noon to hold the press slot.
+> **Note:** Jordan neds final files by Thursday noon to hold the press slot.
 
 **Next steps**
 
@@ -436,7 +436,7 @@ pub fn make() -> Result<()> {
 
     if let Some(src) = real_plugins {
         let dest = crate::wasm_host::plugins_dir();
-        for id in ["sweep", "screener", "snooze", "phishing", "filter-rules"] {
+        for id in ["sweep", "screener", "snooze", "phishing", "filter-rules", "spam", "spelling"] {
             let from = src.join(id).join("plugin.wasm");
             if from.exists() {
                 std::fs::create_dir_all(dest.join(id))?;

@@ -76,6 +76,7 @@ actions!(
         ToggleImportant,
         SenderKey,
         SenderToReading,
+        ReportSpam,
         SenderToRecords,
         MenuNext,
         MenuPrev,
@@ -466,6 +467,7 @@ fn defaults() -> (Vec<Def>, Vec<Hint>) {
         .bind("i", ToggleImportant, List, None)
         .bind("b", SenderKey, List, None)
         .bind("shift-r", SenderToReading, List, None)
+        .bind("shift-1", ReportSpam, List, None)
         .bind("shift-c", SenderToRecords, List, None)
         .bind("l", OpenLabels, List, Some(("l", "label")))
         .hint(List, "g", "go to…")

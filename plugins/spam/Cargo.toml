@@ -1,0 +1,20 @@
+[package]
+name = "wax-spam"
+version = "0.1.0"
+edition = "2021"
+description = "Wax plugin: a spam filter that learns from what you report and rescue"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[workspace]

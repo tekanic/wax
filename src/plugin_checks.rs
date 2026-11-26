@@ -17,6 +17,9 @@ fn keep_safe(reason: CheckReason, actions: Vec<Action>) -> Vec<Action> {
     if reason == CheckReason::Arrived {
         return actions;
     }
+    if reason == CheckReason::MarkedSpam {
+        return Vec::new();
+    }
     actions.into_iter().filter(|a| matches!(a, Action::AddLabel(_) | Action::Warn(_))).collect()
 }
 
@@ -138,8 +141,9 @@ impl MailApp {
         .detach();
     }
 
-    pub fn check_leaving_spam(host: &Arc<Mutex<wasm_host::Host>>, store: &SharedStore, session: &SharedSession, account: &str, items: &[Envelope], mine: Vec<String>) -> Outcome {
-        let spam: Vec<Envelope> = items.iter().filter(|e| e.mailbox.eq_ignore_ascii_case(mail::SPAM)).cloned().collect();
+    pub fn check_moved(host: &Arc<Mutex<wasm_host::Host>>, store: &SharedStore, session: &SharedSession, account: &str, items: &[Envelope], mine: Vec<String>, reason: CheckReason) -> Outcome {
+        let junk = |e: &Envelope| e.mailbox.eq_ignore_ascii_case(mail::SPAM) || e.mailbox.eq_ignore_ascii_case(sweep::SCREENED);
+        let spam: Vec<Envelope> = items.iter().filter(|e| reason == CheckReason::MarkedSpam || junk(e)).cloned().collect();
         if spam.is_empty() {
             return Outcome { warned: Vec::new(), labelled: 0, problems: Vec::new() };
         }
@@ -153,14 +157,14 @@ impl MailApp {
         let mut results = Vec::new();
         let mut problems = Vec::new();
         for e in spam {
-            let (acts, mut p) = h.check(&plugins::to_wit(account, &e), CheckReason::NotSpam, None);
+            let (acts, mut p) = h.check(&plugins::to_wit(account, &e), reason, None);
             problems.append(&mut p);
             results.push((e, acts));
         }
         let checkers = h.running_checkers();
         h.arrival = Default::default();
         drop(h);
-        let mut out = record(store, Some(session), account, results, &checkers, CheckReason::NotSpam);
+        let mut out = record(store, Some(session), account, results, &checkers, reason);
         out.problems.extend(problems);
         out
     }

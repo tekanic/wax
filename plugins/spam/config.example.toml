@@ -1,0 +1,6 @@
+# How sure the filter must be before it moves new mail to Spam, from 0.5 to 0.999.
+threshold = 0.97
+
+# Learn from the mail you already have when the filter is first switched on:
+# Screened Out as junk, older mail you kept as good.
+learn_existing = true

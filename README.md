@@ -119,6 +119,20 @@ When it's switched on it sweeps the mail you already have (outside Spam and
 Trash), and it checks a message again when you open it or move it out of Spam,
 so a suspect message carries a ⚠ banner with the reasons wherever you read it.
 
+**Spam filter** (`plugins/spam`) learns what spam looks like to you: from mail
+you report with `!`, senders you block with `b`, and mail you rescue from Spam or
+Screened Out. When first switched on it also learns from what you already have:
+Screened Out as junk, older mail you kept as good. Once it has seen enough of
+both, it moves new mail it's at least 97% sure of to Spam, with a ⚠ banner saying
+why; press `e` there and it learns it was wrong. It never touches mail from people
+you know. Its `config.toml` sets how sure it must be.
+
+**Spelling and grammar** (`plugins/spelling`) checks what you write a moment after
+you stop typing: typos against an English (US) dictionary with suggested fixes,
+plus repeated words, "a" and "an", a lowercase "i" and sentences that start in
+lowercase. Quoted replies, code and links are left alone. Fixes show under the
+message; click one to apply it, or `+` to add a word to `dictionary.txt`.
+
 **Filter rules** (`plugins/filter-rules`) acts on new mail, one rule per line:
 
 ```
@@ -143,6 +157,7 @@ signatures/<name>/signature.toml    fields, layout, font, links, its account (+ 
 signatures/.deleted/                deleted signatures, kept just in case
 identities/<email>.toml             extra From addresses (and the account they send through)
 blocks/<name>.md                    blocks for the composer ({{cursor}} = start here)
+dictionary.txt                      words the spelling check accepts, one per line
 ```
 
 `~/Library/Application Support/gpui-mail/` keeps what isn't a setting:
@@ -215,6 +230,7 @@ bindings, the hint bar at the bottom of the window and the `g` menu.
 | `e` | list | archive marked (or current); in Trash, Spam and Screened Out: back to the Inbox |
 | `s` / `i` | list | star / mark important (again to undo) |
 | `b` | list | block the sender (Screened Out); in Screened Out: allow them back |
+| `!` | list | report spam: move to Spam, and the spam filter learns from it |
 | `⇧R` / `⇧C` | list | file everything from the sender in Reading / Records |
 | right-click | list | menu of everything above, for the message or the selection |
 | two-finger swipe | list | right: read / unread; left: archive (or the folder's `e`) |
@@ -295,8 +311,8 @@ Test a login without the UI: `cargo run -- --check` (first account).
 **Plugins**
 - [x] Plugin host: sandboxed WebAssembly with permissions, fuel and memory limits
 - [x] The Sweep, Screener, Snooze & follow-up, Phishing warnings, Filter rules
-- [ ] Spam filter that learns from what you move to Spam or Screened Out
-- [ ] Spelling and grammar while you write
+- [x] Spam filter that learns from what you report, block and rescue
+- [x] Spelling and grammar while you write
 - [ ] MCP server, so an AI assistant can search and draft with the access you grant
 - [ ] AI summaries and a morning brief, with your own API key, run on your Mac
 - [ ] A place to find and install plugins, including paid ones
@@ -385,7 +401,8 @@ The plugin interface (`wit/`) and the plugins in `plugins/` are MIT licensed
 ([wit/LICENSE-MIT](wit/LICENSE-MIT), [plugins/LICENSE-MIT](plugins/LICENSE-MIT)),
 so plugins can be written and shared under any license. Bundled themes and
 icons keep their own MIT and ISC licenses (`assets/themes/*/LICENSE`,
-`assets/icons/LICENSE-LUCIDE`).
+`assets/icons/LICENSE-LUCIDE`), and the spelling plugin's word list comes from
+SCOWL and its en_US Hunspell dictionary (`plugins/spelling/dict/LICENSE-SCOWL`).
 
 Copyright © 2026 Tekanics LLC.
 

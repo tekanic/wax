@@ -45,6 +45,7 @@ mod table;
 mod theme;
 mod about;
 mod splash;
+mod spell;
 mod demo;
 mod window_state;
 mod threads;
@@ -235,6 +236,7 @@ enum BulkKind {
     ToInbox,
     /// Delete forever (from Trash or Spam).
     Purge,
+    Spam,
 }
 
 impl BulkKind {
@@ -244,6 +246,7 @@ impl BulkKind {
             BulkKind::Delete => mail::TRASH,
             BulkKind::ToInbox => mail::INBOX,
             BulkKind::Purge => mail::TRASH,
+            BulkKind::Spam => mail::SPAM,
         }
     }
 
@@ -253,6 +256,7 @@ impl BulkKind {
             BulkKind::Delete => "Deleted",
             BulkKind::ToInbox => "Moved to the Inbox:",
             BulkKind::Purge => "Deleting forever:",
+            BulkKind::Spam => "Reported as spam:",
         }
     }
 }
@@ -356,6 +360,8 @@ struct MailApp {
     /// Show shortcut hints in the bottom bar (cmd-/ toggles).
     show_hints: bool,
     splash: Option<splash::Splash>,
+    spell: Vec<spell::Found>,
+    spell_gen: u64,
     bounds_gen: u64,
     width: f32,
     /// The message being written, shown in place of the reader.
@@ -498,6 +504,8 @@ impl MailApp {
             images_allowed: HashSet::new(),
             show_hints: true,
             splash: None,
+            spell: Vec::new(),
+            spell_gen: 0,
             bounds_gen: 0,
             width: 1280.,
             composer: None,
@@ -966,12 +974,15 @@ impl MailApp {
         subs.push(cx.subscribe(&state.body, |this, _, event: &InputEvent, cx| {
             if let InputEvent::Change = event {
                 this.schedule_autosave(cx);
+                this.schedule_spellcheck(cx);
             }
         }));
         state.focus_first(window, cx);
         self.reload_blocks();
         self.composer = Some(state);
         self.compose_subs = subs;
+        self.spell.clear();
+        self.schedule_spellcheck(cx);
         self.save_snapshot_now(cx);
         cx.notify();
     }
@@ -1789,6 +1800,7 @@ impl MailApp {
                 )
                 .into_any_element()
             })
+            .children(self.render_spelling(cx))
             .child(self.render_signature_strip(cx))
     }
 
@@ -1934,6 +1946,7 @@ impl MailApp {
             BulkKind::Delete => e.mailbox.eq_ignore_ascii_case(mail::TRASH),
             BulkKind::ToInbox => e.mailbox.eq_ignore_ascii_case(mail::INBOX),
             BulkKind::Purge => !mail::is_trash_or_spam(&e.mailbox),
+            BulkKind::Spam => mail::is_trash_or_spam(&e.mailbox),
         };
         if items.iter().any(cannot) {
             self.status = match kind {
@@ -1941,6 +1954,7 @@ impl MailApp {
                 BulkKind::Delete => "Already in Trash; Gmail empties it after 30 days".into(),
                 BulkKind::ToInbox => "Already in the Inbox".into(),
                 BulkKind::Purge => "Delete forever works in Trash and Spam".into(),
+                BulkKind::Spam => "Already in Spam or Trash".into(),
             };
             self.status_is_error = true;
             cx.notify();
@@ -2005,7 +2019,8 @@ impl MailApp {
         }
         let store = self.store.clone();
         let accounts: Vec<String> = items.iter().map(|e| self.account_of(e).to_string()).collect();
-        let host = if kind == BulkKind::ToInbox { self.wasm.clone() } else { None };
+        let host = if matches!(kind, BulkKind::ToInbox | BulkKind::Spam) { self.wasm.clone() } else { None };
+        let reason = if kind == BulkKind::Spam { wasm_host::CheckReason::MarkedSpam } else { wasm_host::CheckReason::NotSpam };
         let mine: std::collections::HashMap<String, Vec<String>> = sessions.keys().map(|a| (a.clone(), self.own_addresses(a))).collect();
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let work = items.clone();
@@ -2017,7 +2032,7 @@ impl MailApp {
                     if let (Some(host), Some(store)) = (&host, &store) {
                         for (account, session) in &sessions {
                             let list: Vec<Envelope> = work.iter().zip(&accounts).filter(|(_, a)| *a == account).map(|(e, _)| e.clone()).collect();
-                            let out = MailApp::check_leaving_spam(host, store, session, account, &list, mine.get(account).cloned().unwrap_or_default());
+                            let out = MailApp::check_moved(host, store, session, account, &list, mine.get(account).cloned().unwrap_or_default(), reason);
                             warned.extend(out.warned.into_iter().map(|(k, t)| (account.clone(), k, t)));
                             problems.extend(out.problems);
                         }
@@ -3692,6 +3707,7 @@ impl Render for MailApp {
             .on_action(cx.listener(|this, _: &ToggleImportant, w, cx| this.perform(actions::MsgAction::ToggleImportant, w, cx)))
             .on_action(cx.listener(|this, _: &SenderKey, w, cx| this.sender_key(w, cx)))
             .on_action(cx.listener(|this, _: &SenderToReading, w, cx| this.perform(actions::MsgAction::SenderReading, w, cx)))
+            .on_action(cx.listener(|this, _: &ReportSpam, w, cx| this.perform(actions::MsgAction::ReportSpam, w, cx)))
             .on_action(cx.listener(|this, _: &SenderToRecords, w, cx| this.perform(actions::MsgAction::SenderRecords, w, cx)))
             .on_action(cx.listener(|this, _: &FormatBold, w, cx| this.format(Format::Bold, w, cx)))
             .on_action(cx.listener(|this, _: &FormatItalic, w, cx| this.format(Format::Italic, w, cx)))

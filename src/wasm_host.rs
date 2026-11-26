@@ -23,7 +23,7 @@ mod bindings {
 use bindings::wax;
 /// The generated bindings for one instance.
 type Plugin_ = bindings::Plugin;
-pub use wax::plugin::types::{Action, Address, CheckReason, Command, CommandScope, Envelope, Link, Manifest, MessageContent, Permission, Sender, SenderView, ViewKey};
+pub use wax::plugin::types::{Action, Address, CheckReason, Command, CommandScope, DraftIssue, Envelope, IssueKind, Link, Manifest, MessageContent, Permission, Sender, SenderView, ViewKey};
 
 /// wasmtime has its own error type.
 fn w<T>(r: wasmtime::Result<T>) -> Result<T> {
@@ -48,6 +48,7 @@ pub fn permission_name(p: Permission) -> &'static str {
         Permission::Compose => "compose",
         Permission::Network => "network",
         Permission::Storage => "storage",
+        Permission::ReadDrafts => "read-drafts",
     }
 }
 
@@ -60,6 +61,7 @@ pub fn permission_about(p: Permission) -> &'static str {
         Permission::Compose => "open drafts for you to send",
         Permission::Network => "reach the internet",
         Permission::Storage => "keep its own notes",
+        Permission::ReadDrafts => "read what you're writing, to check it",
     }
 }
 
@@ -423,6 +425,31 @@ impl Host {
         }
     }
 
+    pub fn checks_drafts(&self) -> bool {
+        self.plugins.iter().any(|p| p.running() && p.grants.contains(&Permission::ReadDrafts))
+    }
+
+    pub fn check_draft(&mut self, text: &str) -> (Vec<(String, Vec<DraftIssue>)>, Vec<String>) {
+        let mut out = Vec::new();
+        let mut problems = Vec::new();
+        for i in 0..self.plugins.len() {
+            let p = &self.plugins[i];
+            if !p.running() || !p.grants.contains(&Permission::ReadDrafts) {
+                continue;
+            }
+            if let Some(issues) = self.run(i, &mut problems, |b, s| b.call_check_draft(s, text)) {
+                let issues: Vec<DraftIssue> = issues
+                    .into_iter()
+                    .filter(|d| d.start < d.end && text.is_char_boundary(d.start as usize) && text.is_char_boundary(d.end as usize) && (d.end as usize) <= text.len())
+                    .collect();
+                if !issues.is_empty() {
+                    out.push((self.plugins[i].id.clone(), issues));
+                }
+            }
+        }
+        (out, problems)
+    }
+
     /// The first running plugin's sender view (the Sweep), as (plugin id, view).
     pub fn sender_view(&mut self, account: &str) -> (Option<(String, SenderView)>, Vec<String>) {
         let mut problems = Vec::new();
@@ -776,6 +803,59 @@ mod tests {
         let (acts, problems) = h.run_command("snooze", "snooze", Some("tomorrow"), Some(&mail("hi", "a@b.c")));
         assert!(acts.is_empty());
         assert!(problems[0].contains("refused"), "{problems:?}");
+    }
+
+    #[test]
+    fn spelling_checks_drafts_in_the_sandbox() {
+        let root = scratch("spelling");
+        let Some(()) = install(&root, "spelling", "wax_spelling.wasm", Some(&[Permission::ReadDrafts]), "") else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        assert!(h.checks_drafts());
+        let text = "Thanks for the proofs. I will recieve them tomorow.";
+        let (found, problems) = h.check_draft(text);
+        assert!(problems.is_empty(), "{problems:?}");
+        let issues = &found[0].1;
+        let words: Vec<&str> = issues.iter().map(|i| &text[i.start as usize..i.end as usize]).collect();
+        assert_eq!(words, ["recieve", "tomorow"]);
+        assert_eq!(issues[0].suggestions[0], "receive");
+        assert_eq!(issues[0].kind, super::IssueKind::Spelling);
+        let long = "The catalog proofs look good, and the walnut cover works well with the new paper. ".repeat(120) + "Teh end.";
+        let started = std::time::Instant::now();
+        let (found, problems) = h.check_draft(&long);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(found[0].1.len(), 1);
+        assert!(started.elapsed().as_secs() < 5, "took {:?}", started.elapsed());
+        write_grants(&root.join("spelling"), true, &[], &[Permission::ReadDrafts]).unwrap();
+        h.load_from(&root);
+        assert!(!h.checks_drafts());
+        assert!(h.check_draft(text).0.is_empty());
+    }
+
+    #[test]
+    fn spam_filter_learns_then_files() {
+        let root = scratch("spam");
+        let g = [Permission::ReadEnvelopes, Permission::ReadBodies, Permission::ModifyMail, Permission::Storage];
+        let Some(()) = install(&root, "spam", "wax_spam.wasm", Some(&g), "learn_existing = false\n") else { return };
+        let mut h = Host::new().unwrap();
+        h.load_from(&root);
+        let junk = |i: u32| mail(&format!("Claim your free cash prize now, winner {i}"), "promo@lucky-prizes.biz");
+        let good = |i: u32| mail(&format!("Catalogue proofs and the print schedule, round {i}"), "priya@lumenhouse.studio");
+        assert!(h.arrived(&junk(0), super::CheckReason::Arrived).0.is_empty(), "nothing before it has learned");
+        for i in 0..12 {
+            let (acts, problems) = h.check(&junk(i), super::CheckReason::MarkedSpam, None);
+            assert!(problems.is_empty() && acts.is_empty(), "{problems:?} {acts:?}");
+        }
+        for i in 0..22 {
+            h.check(&good(i), super::CheckReason::NotSpam, None);
+        }
+        let (acts, problems) = h.arrived(&mail("Free cash prize waiting, claim now", "deals@lucky-prizes.biz"), super::CheckReason::Arrived);
+        assert!(problems.is_empty(), "{problems:?}");
+        let acts = &acts[0].1;
+        assert_eq!(acts[0], Action::MoveTo("[Gmail]/Spam".into()));
+        let Action::Warn(why) = &acts[1] else { panic!("{acts:?}") };
+        assert!(why.contains("lucky-prizes.biz"), "{why}");
+        assert!(h.arrived(&mail("Print schedule for the catalogue", "jordan@lumenhouse.studio"), super::CheckReason::Arrived).0.is_empty());
     }
 
     #[test]

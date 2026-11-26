@@ -357,12 +357,22 @@ impl MailApp {
         };
         self.set_rule_in(&p.account, &p.email, &p.name, Some(&p.dest));
         let acct = p.account.clone();
+        let unscreen = p.dest == KEEP && p.previous.as_deref() == Some(SCREENED);
+        let teach = match (self.wasm.clone(), p.dest == SCREENED, unscreen) {
+            (Some(host), true, _) => Some((host, crate::wasm_host::CheckReason::MarkedSpam)),
+            (Some(host), _, true) => Some((host, crate::wasm_host::CheckReason::NotSpam)),
+            _ => None,
+        };
+        let examples: Vec<Envelope> = p.hidden.iter().take(5).cloned().collect();
+        let mine = self.own_addresses(&p.account);
         cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
             let (email, dest) = (p.email.clone(), p.dest.clone());
-            let unscreen = p.dest == KEEP && p.previous.as_deref() == Some(SCREENED);
             let result = cx
                 .background_executor()
                 .spawn(async move {
+                    if let Some((host, reason)) = &teach {
+                        MailApp::check_moved(host, &store, &session, &acct, &examples, mine, *reason);
+                    }
                     let n = if unscreen {
                         unscreen_sender(&session, &email)?
                     } else {

@@ -293,6 +293,11 @@ to the Inbox</td>
 back</td>
 </tr>
 <tr>
+<td><code>!</code></td>
+<td>list</td>
+<td>report spam: move to Spam, and the spam filter learns from it</td>
+</tr>
+<tr>
 <td><code>⇧R</code> / <code>⇧C</code></td>
 <td>list</td>
 <td>file everything from the sender in Reading / Records</td>
@@ -413,6 +418,22 @@ switched on it sweeps the mail you already have (outside Spam and
 Trash), and it checks a message again when you open it or move it out of
 Spam, so a suspect message carries a ⚠ banner with the reasons wherever
 you read it.</p>
+<p><strong>Spam filter</strong> (<code>plugins/spam</code>) learns what
+spam looks like to you: from mail you report with <code>!</code>,
+senders you block with <code>b</code>, and mail you rescue from Spam or
+Screened Out. When first switched on it also learns from what you
+already have: Screened Out as junk, older mail you kept as good. Once it
+has seen enough of both, it moves new mail it's at least 97% sure of to
+Spam, with a ⚠ banner saying why; press <code>e</code> there and it
+learns it was wrong. It never touches mail from people you know. Its
+<code>config.toml</code> sets how sure it must be.</p>
+<p><strong>Spelling and grammar</strong> (<code>plugins/spelling</code>)
+checks what you write a moment after you stop typing: typos against an
+English (US) dictionary with suggested fixes, plus repeated words, "a"
+and "an", a lowercase "i" and sentences that start in lowercase. Quoted
+replies, code and links are left alone. Fixes show under the message;
+click one to apply it, or <code>+</code> to add a word to
+<code>dictionary.txt</code>.</p>
 <p><strong>Filter rules</strong> (<code>plugins/filter-rules</code>)
 acts on new mail, one rule per line:</p>
 <pre><code>subject contains &quot;invoice&quot; =&gt; label &quot;Receipts&quot;
@@ -497,7 +518,8 @@ accounts/&lt;email&gt;/rules.toml         that account&#39;s sender rules: &quot
 signatures/&lt;name&gt;/signature.toml    fields, layout, font, links, its account (+ logo.png, logo2.png)
 signatures/.deleted/                deleted signatures, kept just in case
 identities/&lt;email&gt;.toml             extra From addresses (and the account they send through)
-blocks/&lt;name&gt;.md                    blocks for the composer ({{cursor}} = start here)</code></pre>
+blocks/&lt;name&gt;.md                    blocks for the composer ({{cursor}} = start here)
+dictionary.txt                      words the spelling check accepts, one per line</code></pre>
 <p><code>~/Library/Application Support/gpui-mail/</code> keeps what
 isn't a setting: <code>cache.sqlite</code> (only what can be fetched
 from Gmail again, plus the unsent-message autosave),

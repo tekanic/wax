@@ -70,6 +70,10 @@ impl Guest for Phishing {
         None
     }
 
+    fn check_draft(_text: String) -> Vec<wax::plugin::types::DraftIssue> {
+        Vec::new()
+    }
+
     fn on_sender_key(_account: String, _who: Sender, _key: String) -> Result<Vec<Action>, String> {
         Ok(Vec::new())
     }

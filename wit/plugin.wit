@@ -1,4 +1,4 @@
-// Wax plugin interface, v0.5.
+// Wax plugin interface, v0.6.
 //
 // Implemented by the host: manifest, on-message-received, commands /
 // run-command, get-sender-view / on-sender-key, and the host functions
@@ -6,6 +6,9 @@
 // and message-text. panel is called later; plugins return none for now.
 // http-get answers "not available yet".
 //
+// v0.6: check-draft looks over what you're writing (read-drafts), and the
+// marked-spam reason says you reported a message as spam or blocked its
+// sender; not-spam now also covers letting a sender back in.
 // v0.5: on-message-received says why it's called (check-reason): new mail,
 // opened, existing mail (a first sweep, for plugins with scan-existing),
 // or moved out of Spam. Only new mail may move or archive; the others may
@@ -26,7 +29,7 @@
 // - Everything a plugin may read arrives as arguments or through `host`,
 //   which is permission-checked too.
 
-package wax:plugin@0.5.0;
+package wax:plugin@0.6.0;
 
 interface types {
     record address {
@@ -196,6 +199,8 @@ interface types {
         network,
         /// Private key-value storage.
         storage,
+        /// See the message you're writing, to check it.
+        read-drafts,
     }
 
     /// A link in a message: what it shows and where it goes.
@@ -226,8 +231,29 @@ interface types {
         /// A sweep of mail already there (scan-existing). Labels and
         /// warnings only; read-message only for the last 90 days.
         existing,
-        /// About to be moved out of Spam. Labels and warnings only.
+        /// About to be moved out of Spam, or its sender let back in from
+        /// Screened Out. Labels and warnings only.
         not-spam,
+        /// You reported it as spam or blocked its sender. Labels and
+        /// warnings only; nothing is shown.
+        marked-spam,
+    }
+
+    enum issue-kind {
+        spelling,
+        grammar,
+    }
+
+    /// Something to look at in a draft. `start` and `end` are byte
+    /// offsets into the text check-draft was given.
+    record draft-issue {
+        start: u32,
+        end: u32,
+        kind: issue-kind,
+        /// Shown when the issue is pointed at, e.g. "Possible typo".
+        message: string,
+        /// Replacements for the text from start to end, best first.
+        suggestions: list<string>,
     }
 
     record manifest {
@@ -282,7 +308,7 @@ interface host {
 }
 
 world plugin {
-    use types.{envelope, action, command, panel, manifest, sender, sender-view, check-reason};
+    use types.{envelope, action, command, panel, manifest, sender, sender-view, check-reason, draft-issue};
 
     import host;
 
@@ -311,4 +337,8 @@ world plugin {
 
     /// A view key was pressed on a row of this plugin's sender view.
     export on-sender-key: func(account: string, who: sender, key: string) -> result<list<action>, string>;
+
+    /// Look over a draft's Markdown while it's written (needs read-drafts).
+    /// Called after a pause in typing; return an empty list for no checks.
+    export check-draft: func(text: string) -> list<draft-issue>;
 }

@@ -129,6 +129,10 @@ impl Guest for Sweep {
         Some(SenderView { title: "Sweep".into(), keys, rows })
     }
 
+    fn check_draft(_text: String) -> Vec<wax::plugin::types::DraftIssue> {
+        Vec::new()
+    }
+
     fn on_sender_key(_account: String, who: Sender, key: String) -> Result<Vec<Action>, String> {
         let s = settings();
         let Some(k) = s.keys.iter().find(|k| k.key.eq_ignore_ascii_case(&key)) else { return Ok(Vec::new()) };

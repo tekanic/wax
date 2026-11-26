@@ -198,6 +198,10 @@ pub fn apply_actions(session: &SharedSession, mailbox: &str, id: &str, actions: 
             A::RemoveLabel(l) => s.store_op(mailbox, &ids, &format!("-X-GM-LABELS ({})", mail::imap_quote(l)))?,
             A::MarkRead(on) => s.store_op(mailbox, &ids, if *on { "+FLAGS.SILENT (\\Seen)" } else { "-FLAGS.SILENT (\\Seen)" })?,
             A::Star(on) => s.store_op(mailbox, &ids, if *on { "+FLAGS.SILENT (\\Flagged)" } else { "-FLAGS.SILENT (\\Flagged)" })?,
+            A::MoveTo(l) if !moved && l.eq_ignore_ascii_case(mail::SPAM) => {
+                s.move_ids(mailbox, mail::SPAM, &ids)?;
+                moved = true;
+            }
             A::MoveTo(l) if !moved => {
                 s.ensure_mailbox(l)?;
                 s.copy_ids(mailbox, l, &ids)?;
