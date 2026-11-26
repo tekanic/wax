@@ -364,3 +364,18 @@ PATH=$T:$PATH RUSTC=$T/rustc cargo run
 - `plugins/` — plugins, each its own crate built for `wasm32-wasip2` (`test-*` are for the host's tests)
 - `src/model.rs` — placeholder envelope model and fake data (replaced by the
   SQLite store in Phase 1)
+
+## License
+
+Wax is free software under the [GNU General Public License v3.0](LICENSE) or
+any later version: use it, change it and share it, and share your changes
+under the same terms.
+
+The plugin interface (`wit/`) and the plugins in `plugins/` are MIT licensed
+([wit/LICENSE-MIT](wit/LICENSE-MIT), [plugins/LICENSE-MIT](plugins/LICENSE-MIT)),
+so plugins can be written and shared under any license. Bundled themes and
+icons keep their own MIT and ISC licenses (`assets/themes/*/LICENSE`,
+`assets/icons/LICENSE-LUCIDE`).
+
+Copyright © 2026 Tekanics LLC.
+

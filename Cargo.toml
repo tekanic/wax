@@ -3,7 +3,7 @@ name = "gpui-mail"
 version = "0.1.0"
 edition = "2021"
 description = "A bare-bones, plugin-extensible email client built on GPUI"
-license = "Apache-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 
 [dependencies]
